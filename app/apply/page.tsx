@@ -21,6 +21,11 @@ interface SectorParameter {
   defaultNotes: string;
 }
 
+interface LocationHierarchy {
+  stateName: string;
+  districts: string[];
+}
+
 type RequiredDocKey = "eiaReport" | "empPlan" | "complianceReport";
 
 type StoredDocument = {
@@ -35,6 +40,8 @@ type ExistingApplication = {
   status: "draft" | "eds";
   projectName: string;
   location: string;
+  state?: string;
+  district?: string;
   description: string;
   category: string;
   sector: string;
@@ -64,10 +71,13 @@ const REQUIRED_DOCUMENTS: Array<{ key: RequiredDocKey; label: string }> = [
 export default function Page() {
   const [projectName, setProjectName] = useState("");
   const [location, setLocation] = useState("");
+  const [stateName, setStateName] = useState("");
+  const [districtName, setDistrictName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("A");
   const [sector, setSector] = useState("");
   const [availableSectors, setAvailableSectors] = useState<SectorParameter[]>([]);
+  const [locationHierarchy, setLocationHierarchy] = useState<Record<string, string[]>>({});
 
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "qr">("upi");
   const [paymentReference, setPaymentReference] = useState("");
@@ -99,9 +109,20 @@ export default function Page() {
     [pendingApplications, editingApplicationId]
   );
 
+  const states = useMemo(() => Object.keys(locationHierarchy).sort(), [locationHierarchy]);
+  const districts = useMemo(() => {
+    if (!stateName) {
+      return [] as string[];
+    }
+
+    return locationHierarchy[stateName] || [];
+  }, [locationHierarchy, stateName]);
+
   const resetForm = () => {
     setProjectName("");
     setLocation("");
+    setStateName("");
+    setDistrictName("");
     setDescription("");
     setCategory("A");
     setSector("");
@@ -134,6 +155,34 @@ export default function Page() {
       setAvailableSectors(rows);
     } catch (error) {
       console.error("Error loading sector parameters:", error);
+    }
+  };
+
+  const loadLocationHierarchy = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "locationHierarchy"));
+      const map: Record<string, string[]> = {};
+
+      snapshot.docs.forEach((item) => {
+        const data = item.data() as LocationHierarchy;
+        const currentState = (data.stateName || item.id || "").trim();
+        if (!currentState) {
+          return;
+        }
+
+        const currentDistricts = Array.isArray(data.districts)
+          ? data.districts
+              .map((value) => String(value).trim())
+              .filter((value, index, arr) => value && arr.indexOf(value) === index)
+              .sort((a, b) => a.localeCompare(b))
+          : [];
+
+        map[currentState] = currentDistricts;
+      });
+
+      setLocationHierarchy(map);
+    } catch (error) {
+      console.error("Error loading location hierarchy:", error);
     }
   };
 
@@ -173,8 +222,22 @@ export default function Page() {
 
   useEffect(() => {
     loadSectors();
+    loadLocationHierarchy();
     loadPendingApplications();
   }, []);
+
+  useEffect(() => {
+    if (!stateName) {
+      if (districtName) {
+        setDistrictName("");
+      }
+      return;
+    }
+
+    if (districtName && !districts.includes(districtName)) {
+      setDistrictName("");
+    }
+  }, [districtName, districts, stateName]);
 
   const startEditing = (app: ExistingApplication) => {
     setEditingApplicationId(app.id);
@@ -182,6 +245,8 @@ export default function Page() {
 
     setProjectName(app.projectName || "");
     setLocation(app.location || "");
+    setStateName(app.state || "");
+    setDistrictName(app.district || "");
     setDescription(app.description || "");
     setCategory(app.category || "A");
     setSector(app.sector || "");
@@ -227,8 +292,8 @@ export default function Page() {
   };
 
   const saveDraft = async () => {
-    if (!projectName.trim() || !location.trim()) {
-      alert("Project name and location are required to save draft.");
+    if (!projectName.trim() || !location.trim() || !stateName.trim() || !districtName.trim()) {
+      alert("Project name, state, district, and location are required to save draft.");
       return;
     }
 
@@ -245,6 +310,8 @@ export default function Page() {
       const draftData = {
         projectName,
         location,
+        state: stateName,
+        district: districtName,
         description,
         category,
         sector,
@@ -278,7 +345,15 @@ export default function Page() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!projectName.trim() || !location.trim() || !description.trim() || !category.trim() || !sector.trim()) {
+    if (
+      !projectName.trim() ||
+      !location.trim() ||
+      !stateName.trim() ||
+      !districtName.trim() ||
+      !description.trim() ||
+      !category.trim() ||
+      !sector.trim()
+    ) {
       alert("Please fill in all fields before submitting.");
       return;
     }
@@ -353,6 +428,8 @@ export default function Page() {
       const baseData = {
         projectName,
         location,
+        state: stateName,
+        district: districtName,
         description,
         category,
         sector,
@@ -461,14 +538,51 @@ export default function Page() {
           </div>
 
           <div className="field">
-            <label>Location</label>
+            <label>Location / Locality</label>
             <input
               className="input"
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="Enter project location"
+              placeholder="Enter village/town/locality"
             />
+          </div>
+
+          <div className="field">
+            <label>State</label>
+            <select
+              className="select"
+              value={stateName}
+              onChange={(e) => {
+                const nextState = e.target.value;
+                setStateName(nextState);
+                setDistrictName("");
+              }}
+            >
+              <option value="">Select state</option>
+              {states.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label>District</label>
+            <select
+              className="select"
+              value={districtName}
+              onChange={(e) => setDistrictName(e.target.value)}
+              disabled={!stateName}
+            >
+              <option value="">Select district</option>
+              {districts.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="field">

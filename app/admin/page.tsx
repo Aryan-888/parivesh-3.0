@@ -9,9 +9,11 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import { isPermanentAdminEmail } from "@/lib/rbac";
+import { getAllStatesWithDistricts } from "india-state-district";
 
 interface User {
   uid: string;
@@ -43,6 +45,12 @@ interface SectorParameter {
   defaultNotes: string;
 }
 
+interface LocationHierarchyItem {
+  id: string;
+  stateName: string;
+  districts: string[];
+}
+
 const defaultTemplate = [
   "Meeting Gist",
   "",
@@ -63,12 +71,16 @@ export default function AdminDashboard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [templates, setTemplates] = useState<GistTemplate[]>([]);
   const [sectors, setSectors] = useState<SectorParameter[]>([]);
+  const [locations, setLocations] = useState<LocationHierarchyItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [selectedCategory, setSelectedCategory] = useState<"A" | "B1" | "B2">("A");
   const [templateText, setTemplateText] = useState(defaultTemplate);
   const [sectorName, setSectorName] = useState("");
   const [sectorNotes, setSectorNotes] = useState("");
+  const [locationStateName, setLocationStateName] = useState("");
+  const [locationDistricts, setLocationDistricts] = useState("");
+  const [seedingLocations, setSeedingLocations] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -81,6 +93,7 @@ export default function AdminDashboard() {
       fetchApplications(),
       fetchTemplates(),
       fetchSectors(),
+      fetchLocationHierarchy(),
     ]);
     setLoading(false);
   };
@@ -144,6 +157,21 @@ export default function AdminDashboard() {
       setSectors(rows);
     } catch (error) {
       console.error("Error fetching sectors:", error);
+    }
+  };
+
+  const fetchLocationHierarchy = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "locationHierarchy"));
+      const rows: LocationHierarchyItem[] = snapshot.docs
+        .map((item) => ({
+          id: item.id,
+          ...(item.data() as Omit<LocationHierarchyItem, "id">),
+        }))
+        .sort((a, b) => a.stateName.localeCompare(b.stateName));
+      setLocations(rows);
+    } catch (error) {
+      console.error("Error fetching location hierarchy:", error);
     }
   };
 
@@ -217,6 +245,89 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error("Error saving sector parameter:", error);
       alert("Failed to save sector parameter.");
+    }
+  };
+
+  const saveLocationHierarchy = async () => {
+    const state = locationStateName.trim();
+    const districts = locationDistricts
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item, index, arr) => item && arr.indexOf(item) === index);
+
+    if (!state || districts.length === 0) {
+      alert("State and at least one district are required.");
+      return;
+    }
+
+    const docId = state.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    try {
+      await setDoc(doc(db, "locationHierarchy", docId), {
+        stateName: state,
+        districts,
+        updatedAt: serverTimestamp(),
+      });
+      setLocationStateName("");
+      setLocationDistricts("");
+      await fetchLocationHierarchy();
+      alert("Location hierarchy saved.");
+    } catch (error) {
+      console.error("Error saving location hierarchy:", error);
+      alert("Failed to save location hierarchy.");
+    }
+  };
+
+  const seedAllIndiaLocations = async () => {
+    setSeedingLocations(true);
+    try {
+      const statesWithDistricts = getAllStatesWithDistricts() as Array<{
+        state?: { name?: string };
+        districts?: string[];
+      }>;
+
+      if (!statesWithDistricts.length) {
+        alert("No state/district data found in the package.");
+        return;
+      }
+
+      const batch = writeBatch(db);
+      let validRows = 0;
+
+      statesWithDistricts.forEach((row) => {
+        const state = String(row.state?.name || "").trim();
+        const districts = Array.isArray(row.districts)
+          ? row.districts
+              .map((item) => String(item).trim())
+              .filter((item, index, arr) => item && arr.indexOf(item) === index)
+          : [];
+
+        if (!state || districts.length === 0) {
+          return;
+        }
+
+        const docId = state.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        batch.set(doc(db, "locationHierarchy", docId), {
+          stateName: state,
+          districts,
+          updatedAt: serverTimestamp(),
+        });
+        validRows += 1;
+      });
+
+      if (validRows === 0) {
+        alert("No valid state/district rows available for seeding.");
+        return;
+      }
+
+      await batch.commit();
+      await fetchLocationHierarchy();
+      alert(`Seeded ${validRows} states with districts into Firestore.`);
+    } catch (error) {
+      console.error("Error seeding India locations:", error);
+      alert("Failed to seed India state and district data.");
+    } finally {
+      setSeedingLocations(false);
     }
   };
 
@@ -311,6 +422,62 @@ export default function AdminDashboard() {
                   <div key={row.id} className="card" style={{ marginTop: 10 }}>
                     <h3 style={{ marginTop: 0 }}>{row.sectorName}</h3>
                     <p style={{ marginBottom: 0 }}>{row.defaultNotes}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">State and District Hierarchy</h2>
+            <div style={{ marginBottom: 12 }}>
+              <button
+                className="button"
+                type="button"
+                onClick={seedAllIndiaLocations}
+                disabled={seedingLocations}
+              >
+                {seedingLocations ? "Seeding India Locations..." : "Seed All India States and Districts"}
+              </button>
+              <p style={{ color: "var(--muted)", marginTop: 8 }}>
+                One-click seed uses the india-state-district package and overwrites matching state docs.
+              </p>
+            </div>
+
+            <div className="grid grid-2" style={{ marginBottom: 12 }}>
+              <div className="field">
+                <label>State Name</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={locationStateName}
+                  onChange={(e) => setLocationStateName(e.target.value)}
+                  placeholder="e.g. Chhattisgarh"
+                />
+              </div>
+              <div className="field">
+                <label>Districts (comma separated)</label>
+                <textarea
+                  className="textarea"
+                  rows={3}
+                  value={locationDistricts}
+                  onChange={(e) => setLocationDistricts(e.target.value)}
+                  placeholder="e.g. Raipur, Bilaspur, Durg"
+                />
+              </div>
+            </div>
+            <button className="button" type="button" onClick={saveLocationHierarchy}>
+              Save State and Districts
+            </button>
+
+            <div style={{ marginTop: 16 }}>
+              {locations.length === 0 ? (
+                <p style={{ color: "var(--muted)" }}>No locations configured yet.</p>
+              ) : (
+                locations.map((row) => (
+                  <div key={row.id} className="card" style={{ marginTop: 10 }}>
+                    <h3 style={{ marginTop: 0 }}>{row.stateName}</h3>
+                    <p style={{ marginBottom: 0 }}>{row.districts.join(", ")}</p>
                   </div>
                 ))
               )}

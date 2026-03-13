@@ -11,6 +11,7 @@
   "dependencies": {
     "docx": "^9.6.1",
     "firebase": "^12.10.0",
+    "india-state-district": "^1.0.5",
     "jspdf": "^4.2.0",
     "next": "16.1.6",
     "react": "19.2.3",

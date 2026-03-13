@@ -83,6 +83,8 @@ service cloud.firestore {
           && changedKeys().hasOnly([
             "projectName",
             "location",
+            "state",
+            "district",
             "description",
             "category",
             "sector",
@@ -148,6 +150,11 @@ service cloud.firestore {
     }
 
     match /sectorParameters/{sectorId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasRole("admin");
+    }
+
+    match /locationHierarchy/{stateId} {
       allow read: if isSignedIn();
       allow create, update, delete: if hasRole("admin");
     }
