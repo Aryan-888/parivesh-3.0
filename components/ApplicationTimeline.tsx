@@ -1,18 +1,24 @@
 import React from "react";
+import { WORKFLOW_STATUSES } from "@/lib/workflow";
 
 interface ApplicationTimelineProps {
   currentStatus: string;
 }
 
-const statuses = [
-  { key: "draft", label: "Draft" },
-  { key: "submitted", label: "Submitted" },
-  { key: "under_scrutiny", label: "Under Scrutiny" },
-  { key: "eds", label: "EDS" },
-  { key: "referred", label: "Referred" },
-  { key: "mom_generated", label: "MoM Generated" },
-  { key: "finalized", label: "Finalized" },
-];
+const statuses = WORKFLOW_STATUSES.map((key) => ({
+  key,
+  label:
+    key === "under_scrutiny"
+      ? "Under Scrutiny"
+      : key === "mom_generated"
+      ? "MoM Generated"
+      : key.toUpperCase() === "EDS"
+      ? "EDS"
+      : key
+          .split("_")
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(" "),
+}));
 
 export default function ApplicationTimeline({ currentStatus }: ApplicationTimelineProps) {
   const currentIndex = statuses.findIndex((status) => status.key === currentStatus);

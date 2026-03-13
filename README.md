@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PARIVESH 3.0 - Role-Based Workflow Portal
 
-## Getting Started
+PARIVESH 3.0 is a Next.js + Firebase prototype for end-to-end environmental clearance workflow management across Admin, Project Proponent, Scrutiny Team, and MoM Team.
 
-First, run the development server:
+## Features Implemented
+
+- Role-based access control (Admin, Proponent, Scrutiny, MoM)
+- Permanent admin enforcement for designated email
+- Admin-managed gist templates by category (A, B1, B2)
+- Admin-managed sector parameters
+- Proponent application lifecycle with:
+	- Draft save/edit
+	- Mandatory technical document upload (PDF)
+	- Payment simulation (UPI/QR + verification)
+	- EDS response and resubmission
+- Scrutiny workflow with:
+	- Verification checklist
+	- EDS raise/remarks
+	- Referral to meeting
+- MoM workflow with:
+	- Template-driven gist generation
+	- MoM drafting, finalization
+	- DOCX and PDF generation
+- Firestore security rules enforcing role boundaries and data isolation
+
+## Tech Stack
+
+- Next.js (App Router)
+- React + TypeScript
+- Firebase Auth
+- Firestore
+- Firebase Storage
+- Tailwind CSS
+- docx + jsPDF
+
+## Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Configure environment variables:
+
+- Copy [ .env.example ](.env.example) to `.env.local`
+- Fill in Firebase project values
+
+3. Run development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. Build for production check:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Firestore Rules Deploy
 
-## Learn More
+Rules file is [firestore.rules](firestore.rules).
 
-To learn more about Next.js, take a look at the following resources:
+Deploy command:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+firebase deploy --only firestore:rules
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure (Key Areas)
 
-## Deploy on Vercel
+- Apply workflow: [app/apply/page.tsx](app/apply/page.tsx)
+- Scrutiny workflow: [app/scrutiny/page.tsx](app/scrutiny/page.tsx)
+- MoM workflow: [app/mom/page.tsx](app/mom/page.tsx)
+- Admin management: [app/admin/page.tsx](app/admin/page.tsx)
+- Firebase config: [lib/firebase.ts](lib/firebase.ts)
+- Workflow guards: [lib/workflow.ts](lib/workflow.ts)
+- Gist rendering: [lib/gist.ts](lib/gist.ts)
+- RBAC constants: [lib/rbac.ts](lib/rbac.ts)
+- Security rules: [firestore.rules](firestore.rules)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `.env.local` is git-ignored by default.
+- For production, keep Firebase keys in environment variables and avoid hardcoding values in code.

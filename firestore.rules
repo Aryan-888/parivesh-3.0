@@ -1,0 +1,155 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isPermanentAdminEmail(email) {
+      return email == "anjaney24102@iiitnr.edu.in";
+    }
+
+    function isPermanentAdminUser(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        && isPermanentAdminEmail(get(/databases/$(database)/documents/users/$(userId)).data.email);
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || hasRole("admin"));
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && (
+          (
+            !isPermanentAdminEmail(request.resource.data.email)
+            && request.resource.data.role == "proponent"
+          )
+          || (
+            isPermanentAdminEmail(request.resource.data.email)
+            && request.resource.data.role == "admin"
+          )
+        );
+      allow update: if hasRole("admin")
+        && (
+          !isPermanentAdminUser(userId)
+          || (
+            request.resource.data.role == "admin"
+            && request.resource.data.email == resource.data.email
+          )
+        );
+      allow delete: if hasRole("admin") && !isPermanentAdminUser(userId);
+    }
+
+    match /applications/{applicationId} {
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && (
+          request.resource.data.status == "draft"
+          || (
+            request.resource.data.status == "submitted"
+            && request.resource.data.payment.status == "verified"
+            && request.resource.data.payment.reference is string
+            && request.resource.data.payment.method in ["upi", "qr"]
+            && request.resource.data.documents is list
+            && request.resource.data.documents.size() >= 3
+          )
+        );
+
+      allow read: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || hasRole("admin")
+        || hasRole("scrutiny")
+        || hasRole("mom")
+      );
+
+      allow update: if isSignedIn() && (
+        (
+          resource.data.ownerId == request.auth.uid
+          && resource.data.status in ["draft", "eds"]
+          && (
+            (resource.data.status == "draft" && request.resource.data.status in ["draft", "submitted"])
+            || (resource.data.status == "eds" && request.resource.data.status == "under_scrutiny")
+          )
+          && changedKeys().hasOnly([
+            "projectName",
+            "location",
+            "description",
+            "category",
+            "sector",
+            "payment",
+            "documents",
+            "status",
+            "eds",
+            "updatedAt"
+          ])
+          && (
+            resource.data.status != "eds"
+            || request.resource.data.eds.active == false
+          )
+          && (
+            request.resource.data.status == "draft"
+            || (
+              request.resource.data.payment.status == "verified"
+              && request.resource.data.payment.reference is string
+              && request.resource.data.payment.method in ["upi", "qr"]
+              && request.resource.data.documents is list
+              && request.resource.data.documents.size() >= 3
+            )
+          )
+        )
+        || (
+          hasRole("scrutiny")
+          && resource.data.status in ["submitted", "under_scrutiny", "eds"]
+          && (
+            (resource.data.status == "submitted" && request.resource.data.status in ["under_scrutiny", "eds"])
+            || (resource.data.status == "under_scrutiny" && request.resource.data.status in ["eds", "referred"])
+            || (resource.data.status == "eds" && request.resource.data.status == "under_scrutiny")
+          )
+          && changedKeys().hasOnly(["status", "eds", "checklist", "updatedAt"])
+          && (
+            request.resource.data.status != "referred"
+            || (
+              request.resource.data.checklist.documentsVerified == true
+              && request.resource.data.checklist.paymentVerified == true
+              && request.resource.data.checklist.lockedByScrutiny == true
+            )
+          )
+        )
+        || (
+          hasRole("mom")
+          && resource.data.status in ["referred", "mom_generated"]
+          && (
+            (resource.data.status == "referred" && request.resource.data.status == "mom_generated")
+            || (resource.data.status == "mom_generated" && request.resource.data.status == "finalized")
+          )
+          && changedKeys().hasOnly(["status", "momText", "updatedAt"])
+        )
+      );
+
+      allow delete: if hasRole("admin");
+    }
+
+    match /gistTemplates/{templateId} {
+      allow read: if isSignedIn() && (
+        hasRole("admin")
+        || hasRole("mom")
+      );
+      allow create, update, delete: if hasRole("admin");
+    }
+
+    match /sectorParameters/{sectorId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasRole("admin");
+    }
+  }
+}

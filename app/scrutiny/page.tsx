@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import ApplicationTimeline from "../../components/ApplicationTimeline";
+import {
+  canTransition,
+  isApplicationStatus,
+  type ApplicationStatus,
+} from "@/lib/workflow";
 
 interface Application {
   id: string;
@@ -12,21 +17,70 @@ interface Application {
   location: string;
   description: string;
   status: string;
+  ownerEmail?: string;
+  payment?: {
+    method?: "upi" | "qr";
+    reference?: string;
+    status?: "verified" | "pending";
+    verifiedAt?: string;
+  };
+  checklist?: {
+    documentsVerified?: boolean;
+    paymentVerified?: boolean;
+    details?: string;
+    lockedByScrutiny?: boolean;
+    updatedAt?: string;
+  };
+  eds?: {
+    active?: boolean;
+    remarks?: string;
+    requestedAt?: string;
+    responseNotes?: string;
+    respondedAt?: string;
+    resubmissionCount?: number;
+  };
+}
+
+interface ChecklistDraft {
+  documentsVerified: boolean;
+  paymentVerified: boolean;
+  details: string;
 }
 
 export default function ScrutinyDashboard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [edsRemarks, setEdsRemarks] = useState<Record<string, string>>({});
+  const [checklistDrafts, setChecklistDrafts] = useState<Record<string, ChecklistDraft>>({});
 
   const fetchApplications = async () => {
     try {
-      const q = query(collection(db, "applications"), where("status", "in", ["submitted", "under_scrutiny"]));
+      const q = query(
+        collection(db, "applications"),
+        where("status", "in", ["submitted", "under_scrutiny", "eds"])
+      );
       const querySnapshot = await getDocs(q);
-      const apps: Application[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Application[];
+      const apps: Application[] = querySnapshot.docs.map((item) => ({
+        id: item.id,
+        ...(item.data() as Omit<Application, "id">),
+      }));
       setApplications(apps);
+
+      const nextChecklistDrafts: Record<string, ChecklistDraft> = {};
+      const nextEdsRemarks: Record<string, string> = {};
+
+      for (const app of apps) {
+        nextChecklistDrafts[app.id] = {
+          documentsVerified: app.checklist?.documentsVerified || false,
+          paymentVerified: app.checklist?.paymentVerified || app.payment?.status === "verified",
+          details: app.checklist?.details || "",
+        };
+
+        nextEdsRemarks[app.id] = app.eds?.remarks || "";
+      }
+
+      setChecklistDrafts(nextChecklistDrafts);
+      setEdsRemarks(nextEdsRemarks);
     } catch (error) {
       console.error("Error fetching applications:", error);
     } finally {
@@ -34,16 +88,97 @@ export default function ScrutinyDashboard() {
     }
   };
 
-  const updateStatus = async (id: string, newStatus: string) => {
+  const updateStatus = async (app: Application, newStatus: ApplicationStatus, extra: Record<string, unknown> = {}) => {
     try {
-      const appRef = doc(db, "applications", id);
-      await updateDoc(appRef, { status: newStatus });
-      // Refresh the list
+      if (!isApplicationStatus(app.status)) {
+        alert("Invalid status transition.");
+        return;
+      }
+
+      if (!canTransition(app.status, newStatus)) {
+        alert(`Transition not allowed: ${app.status} -> ${newStatus}`);
+        return;
+      }
+
+      if ((newStatus === "under_scrutiny" || newStatus === "referred") && app.payment?.status !== "verified") {
+        alert("Fee payment must be verified before moving this application.");
+        return;
+      }
+
+      if (newStatus === "referred") {
+        const checklist = checklistDrafts[app.id];
+
+        if (!checklist?.documentsVerified || !checklist?.paymentVerified) {
+          alert("Checklist must confirm documents and payment verification before referral.");
+          return;
+        }
+      }
+
+      const appRef = doc(db, "applications", app.id);
+      await updateDoc(appRef, {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+        ...extra,
+      });
+
       await fetchApplications();
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Failed to update status. Please try again.");
     }
+  };
+
+  const saveChecklist = async (app: Application) => {
+    try {
+      const checklist = checklistDrafts[app.id];
+
+      if (!checklist) {
+        alert("No checklist data found.");
+        return;
+      }
+
+      await updateDoc(doc(db, "applications", app.id), {
+        checklist: {
+          ...checklist,
+          lockedByScrutiny: true,
+          updatedAt: new Date().toISOString(),
+        },
+        updatedAt: new Date().toISOString(),
+      });
+
+      alert("Scrutiny checklist saved.");
+      await fetchApplications();
+    } catch (error) {
+      console.error("Error saving checklist:", error);
+      alert("Failed to save checklist.");
+    }
+  };
+
+  const sendEDS = async (app: Application) => {
+    const remarks = (edsRemarks[app.id] || "").trim();
+
+    if (!remarks) {
+      alert("Please enter EDS remarks before sending back.");
+      return;
+    }
+
+    await updateStatus(app, "eds", {
+      eds: {
+        ...(app.eds || {}),
+        active: true,
+        remarks,
+        requestedAt: new Date().toISOString(),
+      },
+    });
+  };
+
+  const acceptResubmission = async (app: Application) => {
+    await updateStatus(app, "under_scrutiny", {
+      eds: {
+        ...(app.eds || {}),
+        active: false,
+      },
+    });
   };
 
   useEffect(() => {
@@ -64,8 +199,9 @@ export default function ScrutinyDashboard() {
         <header className="header">
           <div>
             <h1 className="title">Scrutiny Dashboard</h1>
-            <p className="subtitle">
-              Review and manage project applications.
+            <p className="subtitle">Verify documents, maintain checklist, issue EDS, and refer eligible cases.</p>
+            <p className="text-sm" style={{ marginTop: 8, color: "var(--muted)" }}>
+              Role Scope: Verification authority only; MoM cannot edit scrutiny checklist fields.
             </p>
           </div>
         </header>
@@ -74,13 +210,18 @@ export default function ScrutinyDashboard() {
           {applications.map((app) => (
             <div key={app.id} className="card">
               <h3 className="text-lg font-semibold mb-2">{app.projectName}</h3>
-              <p className="text-sm text-gray-600 mb-1">
-                <strong>Location:</strong> {app.location}
-              </p>
+              <p className="text-sm text-gray-600 mb-1"><strong>Location:</strong> {app.location}</p>
+              <p className="text-sm text-gray-600 mb-1"><strong>Applicant:</strong> {app.ownerEmail || "N/A"}</p>
+              <p className="text-sm text-gray-600 mb-2"><strong>Description:</strong> {app.description}</p>
+
               <p className="text-sm text-gray-600 mb-2">
-                <strong>Description:</strong> {app.description}
+                <strong>Fee Payment:</strong>{" "}
+                {app.payment?.status === "verified"
+                  ? `Verified (${(app.payment?.method || "").toUpperCase()}${app.payment?.reference ? `: ${app.payment.reference}` : ""})`
+                  : "Pending"}
               </p>
-              <p className="text-sm mb-4">
+
+              <p className="text-sm mb-3">
                 <strong>Status:</strong>{" "}
                 <span
                   className={`px-2 py-1 rounded text-xs font-medium ${
@@ -98,24 +239,111 @@ export default function ScrutinyDashboard() {
                   {app.status.replace("_", " ").toUpperCase()}
                 </span>
               </p>
+
               <div className="mb-4">
                 <ApplicationTimeline currentStatus={app.status} />
               </div>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => updateStatus(app.id, "under_scrutiny")}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-                >
-                  Approve
+
+              <div className="card" style={{ marginBottom: 12 }}>
+                <h4 className="text-sm font-semibold" style={{ marginTop: 0 }}>Scrutiny Checklist</h4>
+                <label className="flex items-center gap-2 text-sm" style={{ marginBottom: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!checklistDrafts[app.id]?.documentsVerified}
+                    onChange={(e) =>
+                      setChecklistDrafts((prev) => ({
+                        ...prev,
+                        [app.id]: {
+                          ...(prev[app.id] || { documentsVerified: false, paymentVerified: false, details: "" }),
+                          documentsVerified: e.target.checked,
+                        },
+                      }))
+                    }
+                  />
+                  Documents verified
+                </label>
+
+                <label className="flex items-center gap-2 text-sm" style={{ marginBottom: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!checklistDrafts[app.id]?.paymentVerified}
+                    onChange={(e) =>
+                      setChecklistDrafts((prev) => ({
+                        ...prev,
+                        [app.id]: {
+                          ...(prev[app.id] || { documentsVerified: false, paymentVerified: false, details: "" }),
+                          paymentVerified: e.target.checked,
+                        },
+                      }))
+                    }
+                  />
+                  Payment verified
+                </label>
+
+                <textarea
+                  className="textarea w-full"
+                  rows={3}
+                  placeholder="Checklist notes"
+                  value={checklistDrafts[app.id]?.details || ""}
+                  onChange={(e) =>
+                    setChecklistDrafts((prev) => ({
+                      ...prev,
+                      [app.id]: {
+                        ...(prev[app.id] || { documentsVerified: false, paymentVerified: false, details: "" }),
+                        details: e.target.value,
+                      },
+                    }))
+                  }
+                />
+
+                <button className="button button-secondary" type="button" onClick={() => saveChecklist(app)}>
+                  Save Checklist
                 </button>
-                <button
-                  onClick={() => updateStatus(app.id, "eds")}
-                  className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
-                >
+              </div>
+
+              <div className="card" style={{ marginBottom: 12 }}>
+                <h4 className="text-sm font-semibold" style={{ marginTop: 0 }}>EDS</h4>
+                <textarea
+                  className="textarea w-full"
+                  rows={3}
+                  placeholder="EDS remarks for proponent"
+                  value={edsRemarks[app.id] || ""}
+                  onChange={(e) => setEdsRemarks((prev) => ({ ...prev, [app.id]: e.target.value }))}
+                />
+                {app.eds?.responseNotes && (
+                  <p className="text-sm" style={{ marginTop: 8 }}>
+                    <strong>Latest PP Response:</strong> {app.eds.responseNotes}
+                  </p>
+                )}
+                {app.eds?.resubmissionCount ? (
+                  <p className="text-xs" style={{ color: "var(--muted)", marginTop: 4 }}>
+                    Resubmissions: {app.eds.resubmissionCount}
+                  </p>
+                ) : null}
+                <button className="button button-secondary" type="button" onClick={() => sendEDS(app)}>
                   Send EDS
                 </button>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {app.status === "eds" ? (
+                  <button
+                    onClick={() => acceptResubmission(app)}
+                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                  >
+                    Accept Resubmission
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => updateStatus(app, "under_scrutiny")}
+                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                  >
+                    Move Under Scrutiny
+                  </button>
+                )}
+
                 <button
-                  onClick={() => updateStatus(app.id, "referred")}
+                  onClick={() => updateStatus(app, "referred")}
                   className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm"
                 >
                   Refer to Meeting

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { auth, db } from "@/lib/firebase";
 import { getDoc, doc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { ensurePermanentAdminAccount, fetchUserRole } from "@/lib/auth";
+import { isPermanentAdminEmail } from "@/lib/rbac";
 
 interface ProtectedRouteProps {
   allowedRole: string;
@@ -19,6 +21,15 @@ export default function ProtectedRoute({ allowedRole, children }: ProtectedRoute
       if (user) {
         console.log("User UID:", user.uid);
         try {
+          await ensurePermanentAdminAccount(user.uid, user.email);
+          const roleFromFetch = await fetchUserRole(user.uid);
+
+          if (roleFromFetch) {
+            setRole(roleFromFetch);
+            setLoading(false);
+            return;
+          }
+
           const userDoc = await getDoc(doc(db, "users", user.uid));
 
           if (userDoc.exists()) {
@@ -27,9 +38,10 @@ export default function ProtectedRoute({ allowedRole, children }: ProtectedRoute
             setRole(userRole);
           } else {
             console.log("User document does not exist, setting role to proponent");
+            const defaultRole = isPermanentAdminEmail(user.email) ? "admin" : "proponent";
             // Create user doc with default role
-            await setDoc(doc(db, "users", user.uid), { role: "proponent", email: user.email });
-            setRole("proponent");
+            await setDoc(doc(db, "users", user.uid), { role: defaultRole, email: user.email });
+            setRole(defaultRole);
           }
         } catch (error) {
           console.error("Error fetching user role:", error);

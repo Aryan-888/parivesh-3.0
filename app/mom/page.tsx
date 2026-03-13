@@ -2,11 +2,28 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, updateDoc, doc, query, where } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  updateDoc,
+  doc,
+  query,
+  where,
+  getDoc,
+} from "firebase/firestore";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import ApplicationTimeline from "../../components/ApplicationTimeline";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { jsPDF } from "jspdf";
+import {
+  canTransition,
+  isApplicationStatus,
+  type ApplicationStatus,
+} from "@/lib/workflow";
+import {
+  defaultTemplateForCategory,
+  renderGistTemplate,
+} from "@/lib/gist";
 
 interface Application {
   id: string;
@@ -19,31 +36,93 @@ interface Application {
   momText?: string;
 }
 
+interface GistTemplate {
+  category: "A" | "B1" | "B2";
+  template: string;
+}
+
+interface SectorParameter {
+  sectorName: string;
+  defaultNotes: string;
+}
+
 export default function MoMDashboard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [gists, setGists] = useState<{ [key: string]: string }>({});
   const [generatingGist, setGeneratingGist] = useState<{ [key: string]: boolean }>({});
 
+  const getTemplateForCategory = async (category: string): Promise<string> => {
+    const normalized = ["A", "B1", "B2"].includes(category) ? category : "A";
+    const templateRef = doc(db, "gistTemplates", normalized);
+    const snapshot = await getDoc(templateRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.data() as GistTemplate;
+      return data.template;
+    }
+
+    return defaultTemplateForCategory(normalized);
+  };
+
+  const getSectorNotes = async (sector: string): Promise<string> => {
+    const sectorKey = sector.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const sectorRef = doc(db, "sectorParameters", sectorKey);
+    const snapshot = await getDoc(sectorRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.data() as SectorParameter;
+      return data.defaultNotes;
+    }
+
+    const fallback = await getDocs(
+      query(collection(db, "sectorParameters"), where("sectorName", "==", sector))
+    );
+
+    if (!fallback.empty) {
+      const data = fallback.docs[0].data() as SectorParameter;
+      return data.defaultNotes;
+    }
+
+    return "No sector-specific notes configured by admin.";
+  };
+
+  const generateTemplateGist = async (app: Application): Promise<string> => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const template = await getTemplateForCategory(app.category);
+    const sectorNotes = await getSectorNotes(app.sector);
+
+    return renderGistTemplate(template, {
+      projectName: app.projectName,
+      location: app.location,
+      category: app.category,
+      sector: app.sector,
+      description: app.description,
+      sectorNotes,
+    });
+  };
+
   const fetchApplications = async () => {
     try {
-      const q = query(collection(db, "applications"), where("status", "in", ["referred", "mom_generated"]));
+      const q = query(
+        collection(db, "applications"),
+        where("status", "in", ["referred", "mom_generated"])
+      );
       const querySnapshot = await getDocs(q);
-      const apps: Application[] = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Application[];
+      const apps: Application[] = querySnapshot.docs.map((item) => ({
+        id: item.id,
+        ...(item.data() as Omit<Application, "id">),
+      }));
       setApplications(apps);
 
-      // Generate initial gists
       const initialGists: { [key: string]: string } = {};
       for (const app of apps) {
         try {
-          initialGists[app.id] = await generateAIGist(app);
+          initialGists[app.id] = await generateTemplateGist(app);
         } catch (error) {
-          // Fallback to basic gist if AI generation fails
-          initialGists[app.id] = `Meeting Gist:
-The committee reviewed the project titled "${app.projectName}" located at "${app.location}" under the "${app.sector}" sector. The project falls under category "${app.category}". The committee discussed environmental impacts and mitigation strategies based on the submitted documents.`;
+          console.error("Template gist generation failed, using fallback:", error);
+          initialGists[app.id] = defaultTemplateForCategory(app.category);
         }
       }
       setGists(initialGists);
@@ -54,45 +133,21 @@ The committee reviewed the project titled "${app.projectName}" located at "${app
     }
   };
 
-  const generateAIGist = async (app: Application): Promise<string> => {
-    // Simulate AI processing delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const gist = `Meeting Gist:
-
-The committee reviewed the project titled "${app.projectName}" located in "${app.location}". The project belongs to the "${app.sector}" sector and falls under category "${app.category}".
-
-Project Overview:
-${app.description}
-
-The committee examined environmental impacts and mitigation strategies based on the submitted documentation and project description. Key considerations included ecological assessment, stakeholder consultations, and compliance with environmental regulations.
-
-Discussion Points:
-• Environmental impact assessment methodology
-• Mitigation measures and monitoring plans
-• Community engagement and grievance redressal
-• Regulatory compliance and permitting requirements
-
-The committee evaluated the project's alignment with sustainable development goals and environmental protection standards.`;
-
-    return gist;
-  };
-
-  const handleGenerateAIGist = async (id: string) => {
+  const handleGenerateTemplateGist = async (id: string) => {
     const app = applications.find((a) => a.id === id);
     if (!app) return;
 
     setGeneratingGist((prev) => ({ ...prev, [id]: true }));
 
     try {
-      const aiGist = await generateAIGist(app);
+      const generated = await generateTemplateGist(app);
       setGists((prev) => ({
         ...prev,
-        [id]: aiGist,
+        [id]: generated,
       }));
     } catch (error) {
-      console.error("Error generating AI gist:", error);
-      alert("Failed to generate AI gist. Please try again.");
+      console.error("Error generating template gist:", error);
+      alert("Failed to generate gist from template.");
     } finally {
       setGeneratingGist((prev) => ({ ...prev, [id]: false }));
     }
@@ -100,26 +155,50 @@ The committee evaluated the project's alignment with sustainable development goa
 
   const handleSaveMoM = async (id: string) => {
     try {
+      const existing = applications.find((app) => app.id === id);
+
+      if (!existing || !isApplicationStatus(existing.status)) {
+        alert("Invalid application status.");
+        return;
+      }
+
+      if (!canTransition(existing.status, "mom_generated")) {
+        alert(`Transition not allowed: ${existing.status} -> mom_generated`);
+        return;
+      }
+
       const momText = gists[id] || "";
       const appRef = doc(db, "applications", id);
       await updateDoc(appRef, { momText, status: "mom_generated" });
-      alert("MoM saved successfully!");
+      alert("MoM saved successfully.");
       await fetchApplications();
     } catch (error) {
       console.error("Error saving MoM:", error);
-      alert("Failed to save MoM. Please try again.");
+      alert("Failed to save MoM.");
     }
   };
 
   const handleFinalizeMoM = async (id: string) => {
     try {
+      const existing = applications.find((app) => app.id === id);
+
+      if (!existing || !isApplicationStatus(existing.status)) {
+        alert("Invalid application status.");
+        return;
+      }
+
+      if (!canTransition(existing.status as ApplicationStatus, "finalized")) {
+        alert(`Transition not allowed: ${existing.status} -> finalized`);
+        return;
+      }
+
       const appRef = doc(db, "applications", id);
       await updateDoc(appRef, { status: "finalized" });
-      alert("MoM finalized successfully!");
+      alert("MoM finalized successfully.");
       await fetchApplications();
     } catch (error) {
       console.error("Error finalizing MoM:", error);
-      alert("Failed to finalize MoM. Please try again.");
+      alert("Failed to finalize MoM.");
     }
   };
 
@@ -138,7 +217,7 @@ The committee evaluated the project's alignment with sustainable development goa
   };
 
   const generateDocx = async (app: Application) => {
-    const doc = new Document({
+    const docxFile = new Document({
       sections: [
         {
           properties: {},
@@ -176,16 +255,14 @@ The committee evaluated the project's alignment with sustainable development goa
               heading: HeadingLevel.HEADING_2,
             }),
             new Paragraph({
-              children: [
-                new TextRun(app.momText || "No meeting text available."),
-              ],
+              children: [new TextRun(app.momText || gists[app.id] || "No meeting text available.")],
             }),
           ],
         },
       ],
     });
 
-    const buffer = await Packer.toBuffer(doc);
+    const buffer = await Packer.toBuffer(docxFile);
     const blob = new Blob([new Uint8Array(buffer)], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
@@ -214,7 +291,8 @@ The committee evaluated the project's alignment with sustainable development goa
     pdf.text("Meeting Summary:", 20, 100);
 
     pdf.setFontSize(12);
-    const splitText = pdf.splitTextToSize(app.momText || "No meeting text available.", 170);
+    const summaryText = app.momText || gists[app.id] || "No meeting text available.";
+    const splitText = pdf.splitTextToSize(summaryText, 170);
     pdf.text(splitText, 20, 110);
 
     pdf.save(`MoM_${app.projectName}.pdf`);
@@ -241,6 +319,9 @@ The committee evaluated the project's alignment with sustainable development goa
             <p className="subtitle">
               Generate and finalize meeting minutes for referred applications.
             </p>
+            <p className="text-sm" style={{ marginTop: 8, color: "var(--muted)" }}>
+              Role Scope: Edit template-generated gist and finalize MoM; no scrutiny checklist modifications.
+            </p>
           </div>
         </header>
 
@@ -264,7 +345,7 @@ The committee evaluated the project's alignment with sustainable development goa
                 <label className="block text-sm font-medium mb-2">Meeting Gist</label>
                 <textarea
                   className="textarea w-full"
-                  rows={6}
+                  rows={8}
                   value={gists[app.id] || ""}
                   onChange={(e) => setGists((prev) => ({ ...prev, [app.id]: e.target.value }))}
                   placeholder="Edit the meeting gist here..."
@@ -273,11 +354,11 @@ The committee evaluated the project's alignment with sustainable development goa
 
               <div className="flex gap-2 flex-wrap">
                 <button
-                  onClick={() => handleGenerateAIGist(app.id)}
+                  onClick={() => handleGenerateTemplateGist(app.id)}
                   disabled={generatingGist[app.id]}
                   className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {generatingGist[app.id] ? "Generating..." : "Generate AI Gist"}
+                  {generatingGist[app.id] ? "Generating..." : "Generate From Admin Template"}
                 </button>
                 <button
                   onClick={() => handleSaveMoM(app.id)}
@@ -291,22 +372,18 @@ The committee evaluated the project's alignment with sustainable development goa
                 >
                   Finalize MoM
                 </button>
-                {app.momText && (
-                  <>
-                    <button
-                      onClick={() => handleDownloadPdf(app.id)}
-                      className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                    >
-                      Download PDF
-                    </button>
-                    <button
-                      onClick={() => handleDownloadDocx(app.id)}
-                      className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600"
-                    >
-                      Download DOCX
-                    </button>
-                  </>
-                )}
+                <button
+                  onClick={() => handleDownloadPdf(app.id)}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                >
+                  Download PDF
+                </button>
+                <button
+                  onClick={() => handleDownloadDocx(app.id)}
+                  className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600"
+                >
+                  Download DOCX
+                </button>
               </div>
             </div>
           ))}

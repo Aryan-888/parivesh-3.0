@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { auth, logOut } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import Login from "./Login";
+import AdminLogin from "./AdminLogin";
+import { usePathname } from "next/navigation";
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -12,6 +14,9 @@ interface AuthProviderProps {
 export default function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
+
+  const isAdminAuthPath = pathname === "/admin" || pathname === "/admin-login";
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -40,6 +45,10 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   }
 
   if (!user) {
+    if (isAdminAuthPath) {
+      return <AdminLogin onLogin={() => setUser(auth.currentUser)} />;
+    }
+
     return <Login onLogin={() => setUser(auth.currentUser)} />;
   }
 

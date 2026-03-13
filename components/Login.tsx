@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn, signUp } from "@/lib/firebase";
-import { fetchUserRole } from "@/lib/auth";
+import { ensurePermanentAdminAccount, fetchUserRole } from "@/lib/auth";
 
 interface LoginProps {
   onLogin: () => void;
@@ -22,7 +23,6 @@ export default function Login({ onLogin }: LoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
-  const [selectedRole, setSelectedRole] = useState("proponent");
 
   const router = useRouter();
 
@@ -40,10 +40,12 @@ export default function Login({ onLogin }: LoginProps) {
       let user;
 
       if (isRegistering) {
-        user = await signUp(email, password, selectedRole);
+        user = await signUp(email, password);
       } else {
         user = await signIn(email, password);
       }
+
+      await ensurePermanentAdminAccount(user.uid, user.email);
 
       onLogin();
 
@@ -97,19 +99,9 @@ export default function Login({ onLogin }: LoginProps) {
         </form>
 
         {isRegistering && (
-          <div className="field">
-            <label>Role</label>
-            <select
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value)}
-              className="input"
-            >
-              <option value="proponent">Project Proponent</option>
-              <option value="admin">Admin</option>
-              <option value="scrutiny">Scrutiny</option>
-              <option value="mom">MoM</option>
-            </select>
-          </div>
+          <p className="text-sm text-gray-600 mt-3 text-center">
+            New registrations are created as Project Proponent accounts.
+          </p>
         )}
 
         <div className="mt-4 text-center text-sm text-gray-600">
@@ -136,6 +128,13 @@ export default function Login({ onLogin }: LoginProps) {
               </button>
             </>
           )}
+        </div>
+
+        <div className="mt-3 text-center text-sm">
+          <span style={{ color: "var(--muted)" }}>Administrator?</span>{" "}
+          <Link href="/admin-login" className="text-blue-700 hover:underline font-semibold">
+            Use Admin Portal Login
+          </Link>
         </div>
       </div>
     </main>
