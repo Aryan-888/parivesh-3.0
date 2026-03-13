@@ -1,65 +1,211 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import Dashboard from "../components/Dashboard";
+import ProjectList from "../components/ProjectList";
+import ProjectForm from "../components/ProjectForm";
 
 export default function Home() {
+
+  const [projectName, setProjectName] = useState("");
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
+
+  const [projects, setProjects] = useState<any[]>([]);
+  const [filter, setFilter] = useState("All");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const handleSubmit = async () => {
+    // Validation: Ensure all required fields are filled
+    if (!projectName.trim()) {
+      alert("Please enter a project name.");
+      return;
+    }
+    if (!location.trim()) {
+      alert("Please enter a location.");
+      return;
+    }
+    if (!description.trim()) {
+      alert("Please enter a description.");
+      return;
+    }
+    if (files.length === 0) {
+      alert("Please upload at least one document.");
+      return;
+    }
+
+    try {
+      const { db, storage } = await import("../lib/firebase");
+      const { collection, addDoc } = await import("firebase/firestore");
+      const { ref, uploadBytesResumable, getDownloadURL } = await import("firebase/storage");
+
+      let fileURLs: string[] = [];
+
+      for (const file of files) {
+        const maxSize = 50 * 1024 * 1024;
+
+        if (file.size > maxSize) {
+          alert(`${file.name} exceeds 50MB`);
+          return;
+        }
+
+        if (file.type !== "application/pdf") {
+          alert(`${file.name} must be a PDF`);
+          return;
+        }
+
+        const storageRef = ref(storage, `documents/${Date.now()}_${file.name}`);
+        const uploadTask = uploadBytesResumable(storageRef, file);
+
+        await new Promise((resolve, reject) => {
+          uploadTask.on(
+            "state_changed",
+            (snapshot) => {
+              const progress =
+                (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+
+              setUploadProgress(Math.round(progress));
+            },
+            (error) => reject(error),
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              fileURLs.push(url);
+              resolve(url);
+            }
+          );
+        });
+      }
+
+      await addDoc(collection(db, "projects"), {
+        projectName,
+        location,
+        description,
+        documentURLs: fileURLs,
+        status: "Pending",
+        createdAt: new Date()
+      });
+
+      alert("Project submitted!");
+
+      setProjectName("");
+      setLocation("");
+      setDescription("");
+      setFiles([]);
+      setUploadProgress(0);
+
+      loadProjects();
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      alert(`Upload failed: ${error?.message ?? error}`);
+      setUploadProgress(0);
+    }
+  };
+
+  const loadProjects = async () => {
+    setLoading(true);
+    const { db } = await import("../lib/firebase");
+    const { collection, getDocs } = await import("firebase/firestore");
+
+    const snapshot = await getDocs(collection(db, "projects"));
+
+    const data = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    setProjects(data);
+    setLoading(false);
+  };
+
+  const updateStatus = async (id: string, newStatus: string) => {
+
+    const { db } = await import("../lib/firebase");
+    const { doc, updateDoc } = await import("firebase/firestore");
+
+    const projectRef = doc(db, "projects", id);
+
+    await updateDoc(projectRef, { status: newStatus });
+
+    loadProjects();
+  };
+
+  const removeFile = (index: number) => {
+    const newFiles = [...files];
+    newFiles.splice(index, 1);
+    setFiles(newFiles);
+  };
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const filteredProjects = projects
+    .filter(p => filter === "All" ? true : p.status === filter)
+    .filter(p =>
+      p.projectName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="container">
+      <header className="header">
+        <div>
+          <h1 className="title">PARIVESH Portal</h1>
+          <p className="subtitle">
+            Manage projects, track document uploads, and approve submissions in one
+            clean dashboard.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      <div className="grid grid-2">
+        <Dashboard projects={projects} />
+        <div>
+          <ProjectList projects={filteredProjects} updateStatus={updateStatus} loading={loading} />
+          <div style={{ marginTop: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }} className="search-filter">
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <input
+                className="input"
+                type="text"
+                placeholder="Search projects..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <select
+              className="select"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{ minWidth: 120 }}
+            >
+              <option value="All">All Status</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      <div style={{ marginTop: 32 }}>
+        <ProjectForm
+          projectName={projectName}
+          setProjectName={setProjectName}
+          location={location}
+          setLocation={setLocation}
+          description={description}
+          setDescription={setDescription}
+          files={files}
+          setFiles={setFiles}
+          removeFile={removeFile}
+          handleSubmit={handleSubmit}
+          uploadProgress={uploadProgress}
+        />
+      </div>
+    </main>
   );
 }
