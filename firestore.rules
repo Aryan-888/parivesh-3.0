@@ -9,7 +9,11 @@ service cloud.firestore {
     function hasRole(role) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role
+        && (
+          role != "admin"
+          || !isLegacyAdminEmail(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email)
+        );
     }
 
     function changedKeys() {
@@ -17,7 +21,12 @@ service cloud.firestore {
     }
 
     function isPermanentAdminEmail(email) {
-      return email == "anjaney24102@iiitnr.edu.in";
+      return email == "admin@admin.com";
+    }
+
+    function isLegacyAdminEmail(email) {
+      return email == "anjaney24102@iiitnr.edu.in"
+        || email == "anjaney@24102@iiitnr.edu.in";
     }
 
     function isPermanentAdminUser(userId) {

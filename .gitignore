@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 node_modules
+backend/uploads/
+backend/firebase-service-account.json
+backend/__pycache__/
+.venv/
+backend/.venv/

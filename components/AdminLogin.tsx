@@ -24,7 +24,7 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     setError("");
 
     try {
-      const user = await signIn(email, password);
+      const user = await signIn(email.trim().toLowerCase(), password);
       await ensurePermanentAdminAccount(user.uid, user.email);
 
       const role = await fetchUserRole(user.uid);
@@ -37,7 +37,13 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
       onLogin();
       router.push("/admin");
     } catch (err: any) {
-      setError(err?.message || "Failed to login.");
+      if (err?.code === "auth/invalid-credential") {
+        setError("Invalid email/password. If this is admin@admin.com, use Reset Password below.");
+      } else if (err?.code === "auth/too-many-requests") {
+        setError("Too many login attempts. Please wait a while and try again.");
+      } else {
+        setError(err?.message || "Failed to login.");
+      }
     } finally {
       setLoading(false);
     }

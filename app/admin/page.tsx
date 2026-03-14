@@ -51,6 +51,25 @@ interface LocationHierarchyItem {
   districts: string[];
 }
 
+const normalizeDistricts = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter((item, index, arr) => item && arr.indexOf(item) === index)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item, index, arr) => item && arr.indexOf(item) === index)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  return [];
+};
+
 const defaultTemplate = [
   "Meeting Gist",
   "",
@@ -164,10 +183,23 @@ export default function AdminDashboard() {
     try {
       const snapshot = await getDocs(collection(db, "locationHierarchy"));
       const rows: LocationHierarchyItem[] = snapshot.docs
-        .map((item) => ({
-          id: item.id,
-          ...(item.data() as Omit<LocationHierarchyItem, "id">),
-        }))
+        .map((item) => {
+          const data = item.data() as {
+            stateName?: string;
+            state?: string;
+            name?: string;
+            districts?: string[] | string;
+            districtList?: string[] | string;
+            district?: string[] | string;
+          };
+
+          return {
+            id: item.id,
+            stateName: (data.stateName || data.state || data.name || item.id || "").trim(),
+            districts: normalizeDistricts(data.districts || data.districtList || data.district),
+          };
+        })
+        .filter((item) => item.stateName && item.districts.length > 0)
         .sort((a, b) => a.stateName.localeCompare(b.stateName));
       setLocations(rows);
     } catch (error) {
@@ -283,6 +315,7 @@ export default function AdminDashboard() {
     try {
       const statesWithDistricts = getAllStatesWithDistricts() as Array<{
         state?: { name?: string };
+        name?: string;
         districts?: string[];
       }>;
 
@@ -295,7 +328,7 @@ export default function AdminDashboard() {
       let validRows = 0;
 
       statesWithDistricts.forEach((row) => {
-        const state = String(row.state?.name || "").trim();
+        const state = String(row.name || row.state?.name || "").trim();
         const districts = Array.isArray(row.districts)
           ? row.districts
               .map((item) => String(item).trim())

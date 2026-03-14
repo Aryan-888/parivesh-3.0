@@ -13,6 +13,8 @@ import {
   doc,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { onAuthStateChanged } from "firebase/auth";
+import { getAllStatesWithDistricts } from "india-state-district";
 import ProtectedRoute from "../../components/ProtectedRoute";
 
 interface SectorParameter {
@@ -24,6 +26,10 @@ interface SectorParameter {
 interface LocationHierarchy {
   stateName: string;
   districts: string[];
+  state?: string;
+  name?: string;
+  district?: string[] | string;
+  districtList?: string[] | string;
 }
 
 type RequiredDocKey = "eiaReport" | "empPlan" | "complianceReport";
@@ -68,7 +74,61 @@ const REQUIRED_DOCUMENTS: Array<{ key: RequiredDocKey; label: string }> = [
   { key: "complianceReport", label: "Compliance Undertaking (PDF)" },
 ];
 
+const DEFAULT_SECTOR_OPTIONS = [
+  "Mining",
+  "Infrastructure",
+  "Manufacturing",
+  "Power",
+  "Oil and Gas",
+  "Cement",
+  "Chemical",
+  "Township and Area Development",
+  "Irrigation",
+  "Transport",
+  "Waste Management",
+  "Renewable Energy",
+];
+
+const BUILT_IN_LOCATION_FALLBACK: Record<string, string[]> = {
+  "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore"],
+  Assam: ["Guwahati", "Dibrugarh", "Silchar", "Nagaon"],
+  Bihar: ["Patna", "Gaya", "Muzaffarpur", "Bhagalpur"],
+  Chhattisgarh: ["Raipur", "Bilaspur", "Durg", "Bastar"],
+  Delhi: ["New Delhi", "Central Delhi", "South Delhi", "North West Delhi"],
+  Gujarat: ["Ahmedabad", "Surat", "Vadodara", "Rajkot"],
+  Karnataka: ["Bengaluru Urban", "Mysuru", "Mangaluru", "Belagavi"],
+  Kerala: ["Thiruvananthapuram", "Kochi", "Kozhikode", "Thrissur"],
+  Maharashtra: ["Mumbai", "Pune", "Nagpur", "Nashik"],
+  Odisha: ["Bhubaneswar", "Cuttack", "Puri", "Sambalpur"],
+  Punjab: ["Ludhiana", "Amritsar", "Jalandhar", "Patiala"],
+  Rajasthan: ["Jaipur", "Jodhpur", "Udaipur", "Kota"],
+  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Salem"],
+  Telangana: ["Hyderabad", "Warangal", "Nizamabad", "Karimnagar"],
+  "Uttar Pradesh": ["Lucknow", "Kanpur Nagar", "Varanasi", "Prayagraj"],
+  "West Bengal": ["Kolkata", "Howrah", "Darjeeling", "Siliguri"],
+};
+
+const normalizeDistricts = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter((item, index, arr) => item && arr.indexOf(item) === index)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item, index, arr) => item && arr.indexOf(item) === index)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  return [];
+};
+
 export default function Page() {
+  const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
   const [projectName, setProjectName] = useState("");
   const [location, setLocation] = useState("");
   const [stateName, setStateName] = useState("");
@@ -118,6 +178,14 @@ export default function Page() {
     return locationHierarchy[stateName] || [];
   }, [locationHierarchy, stateName]);
 
+  const sectorOptions = useMemo(() => {
+    const dynamicOptions = availableSectors.map((item) => item.sectorName.trim()).filter(Boolean);
+    const merged = [...dynamicOptions, ...DEFAULT_SECTOR_OPTIONS];
+    return merged.filter((item, index, arr) => arr.indexOf(item) === index).sort((a, b) => a.localeCompare(b));
+  }, [availableSectors]);
+
+  const isCustomSector = !!sector.trim() && !sectorOptions.includes(sector.trim());
+
   const resetForm = () => {
     setProjectName("");
     setLocation("");
@@ -147,6 +215,15 @@ export default function Page() {
 
   const loadSectors = async () => {
     try {
+      if (backendBaseUrl) {
+        const response = await fetch(`${backendBaseUrl}/api/sectors`);
+        if (response.ok) {
+          const rows = (await response.json()) as SectorParameter[];
+          setAvailableSectors(rows);
+          return;
+        }
+      }
+
       const snapshot = await getDocs(collection(db, "sectorParameters"));
       const rows = snapshot.docs.map((item) => ({
         id: item.id,
@@ -160,29 +237,78 @@ export default function Page() {
 
   const loadLocationHierarchy = async () => {
     try {
+      if (backendBaseUrl) {
+        const response = await fetch(`${backendBaseUrl}/api/locations`);
+        if (response.ok) {
+          const rows = (await response.json()) as Array<{ stateName: string; districts: string[] }>;
+          const backendMap: Record<string, string[]> = {};
+          rows.forEach((row) => {
+            const state = String(row.stateName || "").trim();
+            const districts = normalizeDistricts(row.districts);
+            if (state && districts.length > 0) {
+              backendMap[state] = districts;
+            }
+          });
+
+          if (Object.keys(backendMap).length > 0) {
+            setLocationHierarchy(backendMap);
+            return;
+          }
+        }
+      }
+
       const snapshot = await getDocs(collection(db, "locationHierarchy"));
       const map: Record<string, string[]> = {};
 
       snapshot.docs.forEach((item) => {
         const data = item.data() as LocationHierarchy;
-        const currentState = (data.stateName || item.id || "").trim();
+        const currentState = (data.stateName || data.state || data.name || item.id || "").trim();
         if (!currentState) {
           return;
         }
 
-        const currentDistricts = Array.isArray(data.districts)
-          ? data.districts
-              .map((value) => String(value).trim())
-              .filter((value, index, arr) => value && arr.indexOf(value) === index)
-              .sort((a, b) => a.localeCompare(b))
-          : [];
+        const currentDistricts = normalizeDistricts(
+          data.districts || data.districtList || data.district
+        );
 
-        map[currentState] = currentDistricts;
+        if (currentDistricts.length > 0) {
+          map[currentState] = currentDistricts;
+        }
       });
+
+      if (Object.keys(map).length === 0) {
+        const fallbackRows = getAllStatesWithDistricts() as Array<{
+          state?: { name?: string } | string;
+          name?: string;
+          districts?: string[];
+        }>;
+
+        fallbackRows.forEach((row) => {
+          const state = String(
+            row.name || (typeof row.state === "string" ? row.state : row.state?.name || "")
+          ).trim();
+          const districts = Array.isArray(row.districts)
+            ? row.districts
+                .map((item) => String(item).trim())
+                .filter((item, index, arr) => item && arr.indexOf(item) === index)
+                .sort((a, b) => a.localeCompare(b))
+            : [];
+
+          if (state && districts.length > 0) {
+            map[state] = districts;
+          }
+        });
+      }
+
+      if (Object.keys(map).length === 0) {
+        setLocationHierarchy(BUILT_IN_LOCATION_FALLBACK);
+        return;
+      }
 
       setLocationHierarchy(map);
     } catch (error) {
       console.error("Error loading location hierarchy:", error);
+      setLocationHierarchy(BUILT_IN_LOCATION_FALLBACK);
     }
   };
 
@@ -221,9 +347,19 @@ export default function Page() {
   };
 
   useEffect(() => {
-    loadSectors();
-    loadLocationHierarchy();
-    loadPendingApplications();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        setLocationHierarchy({});
+        setPendingApplications([]);
+        return;
+      }
+
+      loadSectors();
+      loadLocationHierarchy();
+      loadPendingApplications();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -406,17 +542,42 @@ export default function Page() {
             return;
           }
 
-          const filePath = `applications/${user.uid}/${Date.now()}_${requiredDoc.key}_${file.name}`;
-          const storageRef = ref(storage, filePath);
-          await uploadBytes(storageRef, file);
-          const fileUrl = await getDownloadURL(storageRef);
+          if (backendBaseUrl) {
+            const payload = new FormData();
+            payload.append("ownerId", user.uid);
+            payload.append("docKey", requiredDoc.key);
+            payload.append("file", file);
 
-          uploadedDocuments.push({
-            key: requiredDoc.key,
-            name: file.name,
-            url: fileUrl,
-            contentType: file.type,
-          });
+            const response = await fetch(`${backendBaseUrl}/api/uploads`, {
+              method: "POST",
+              body: payload,
+            });
+
+            if (!response.ok) {
+              const body = (await response.json().catch(() => ({}))) as { message?: string };
+              throw new Error(body.message || `Backend upload failed for ${requiredDoc.label}.`);
+            }
+
+            const uploaded = (await response.json()) as StoredDocument;
+            uploadedDocuments.push({
+              key: requiredDoc.key,
+              name: uploaded.name,
+              url: uploaded.url,
+              contentType: uploaded.contentType || file.type,
+            });
+          } else {
+            const filePath = `applications/${user.uid}/${Date.now()}_${requiredDoc.key}_${file.name}`;
+            const storageRef = ref(storage, filePath);
+            await uploadBytes(storageRef, file);
+            const fileUrl = await getDownloadURL(storageRef);
+
+            uploadedDocuments.push({
+              key: requiredDoc.key,
+              name: file.name,
+              url: fileUrl,
+              contentType: file.type,
+            });
+          }
         } else {
           const existingDoc = existingDocuments[requiredDoc.key];
           if (existingDoc) {
@@ -442,6 +603,8 @@ export default function Page() {
         documents: uploadedDocuments,
         updatedAt: serverTimestamp(),
       };
+
+      let savedApplicationId = editingApplicationId;
 
       if (editingApplicationId && editingApplicationStatus) {
         const updateData: Record<string, unknown> = {
@@ -471,16 +634,50 @@ export default function Page() {
           createdAt: serverTimestamp(),
         });
 
+        savedApplicationId = docRef.id;
+
         alert(
           `Application submitted successfully! Your Application ID is: ${docRef.id}. You can track your application at /track`
         );
+      }
+
+      if (backendBaseUrl && savedApplicationId) {
+        try {
+          await fetch(`${backendBaseUrl}/api/process-documents`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              applicationId: savedApplicationId,
+              ownerId: user.uid,
+              documents: uploadedDocuments.map((item) => ({
+                key: item.key,
+                url: item.url,
+              })),
+            }),
+          });
+        } catch (processingError) {
+          console.warn("Backend document processing skipped:", processingError);
+        }
       }
 
       await loadPendingApplications();
       resetForm();
     } catch (error) {
       console.error("Error submitting application:", error);
-      alert("Failed to submit application. Please try again.");
+      const message = String((error as { message?: string })?.message || "");
+      if (
+        message.toLowerCase().includes("cors")
+        || message.toLowerCase().includes("firebasestorage")
+        || message.toLowerCase().includes("storage has not been set up")
+      ) {
+        alert("File upload failed because Firebase Storage is not fully configured for this project yet. Open Firebase Console > Storage > Get Started, then retry.");
+      } else if (message.toLowerCase().includes("backend upload failed") || message.toLowerCase().includes("failed to upload file")) {
+        alert("File upload failed on backend. Ensure Python backend is running and backend/.env credentials are correct.");
+      } else {
+        alert("Failed to submit application. Please try again.");
+      }
     } finally {
       setUploadingDocuments(false);
       setLoading(false);
@@ -607,22 +804,35 @@ export default function Page() {
 
           <div className="field">
             <label>Sector</label>
-            {availableSectors.length > 0 ? (
-              <select className="select" value={sector} onChange={(e) => setSector(e.target.value)}>
-                <option value="">Select sector</option>
-                {availableSectors.map((item) => (
-                  <option key={item.id} value={item.sectorName}>{item.sectorName}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                className="input"
-                type="text"
-                value={sector}
-                onChange={(e) => setSector(e.target.value)}
-                placeholder="Enter project sector"
-              />
-            )}
+            <select
+              className="select"
+              value={isCustomSector ? "__custom__" : sector}
+              onChange={(e) => {
+                const selected = e.target.value;
+                if (selected === "__custom__") {
+                  if (!isCustomSector) {
+                    setSector("");
+                  }
+                  return;
+                }
+                setSector(selected);
+              }}
+            >
+              <option value="">Select sector</option>
+              {sectorOptions.map((item) => (
+                <option key={item} value={item}>{item}</option>
+              ))}
+              <option value="__custom__">Other (type your sector)</option>
+            </select>
+
+            <input
+              className="input"
+              type="text"
+              value={isCustomSector ? sector : ""}
+              onChange={(e) => setSector(e.target.value)}
+              placeholder="If not listed, type your sector"
+              style={{ marginTop: 10 }}
+            />
           </div>
 
           <div className="card" style={{ marginBottom: 16 }}>

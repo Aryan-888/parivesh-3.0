@@ -58,6 +58,46 @@ npm run dev
 npm run build
 ```
 
+## Backend Service Setup
+
+A separate Python backend is now available in [backend/app.py](backend/app.py) for server-side APIs.
+
+1. Create and activate virtual environment:
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+2. Install backend dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Configure backend environment:
+
+- Copy [backend/.env.example](backend/.env.example) to `backend/.env`
+- Fill Firebase Admin service account values
+
+4. Start backend server:
+
+```bash
+python app.py
+```
+
+The backend runs on `http://localhost:5000` by default and exposes:
+
+- `GET /api/health`
+- `GET /api/locations`
+- `GET /api/sectors`
+- `POST /api/uploads` (PDF upload storage under `backend/uploads`)
+- `POST /api/process-documents` (analyze uploaded PDFs from backend storage)
+- `GET /api/process-documents-history?applicationId=<id>`
+
+Frontend connection uses `NEXT_PUBLIC_BACKEND_URL` in [ .env.local ](.env.local).
+
 ## Firestore Rules Deploy
 
 Rules file is [firestore.rules](firestore.rules).

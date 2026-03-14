@@ -1,6 +1,6 @@
 import { db } from "./firebase";
 import { getDoc, doc, setDoc, updateDoc } from "firebase/firestore";
-import { isPermanentAdminEmail } from "./rbac";
+import { isLegacyAdminEmail, isPermanentAdminEmail } from "./rbac";
 
 export const ensurePermanentAdminAccount = async (uid: string, email?: string | null) => {
   if (!isPermanentAdminEmail(email)) {
@@ -31,6 +31,11 @@ export const fetchUserRole = async (uid: string) => {
 
     if (userDoc.exists()) {
       const data = userDoc.data();
+
+      if (isLegacyAdminEmail(data.email) && data.role === "admin") {
+        await updateDoc(userRef, { role: "proponent" });
+        return "proponent";
+      }
 
       if (isPermanentAdminEmail(data.email) && data.role !== "admin") {
         await updateDoc(userRef, { role: "admin" });

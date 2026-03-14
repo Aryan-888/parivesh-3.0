@@ -47,11 +47,61 @@ interface ChecklistDraft {
   details: string;
 }
 
+interface ProcessingRunDocument {
+  key?: string;
+  ok?: boolean;
+  error?: string;
+  analysis?: {
+    pageCount?: number | null;
+    sizeBytes?: number;
+  };
+}
+
+interface ProcessingRun {
+  id: string;
+  applicationId?: string;
+  count?: number;
+  okCount?: number;
+  processedAt?: string;
+  documents?: ProcessingRunDocument[];
+}
+
 export default function ScrutinyDashboard() {
+  const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [edsRemarks, setEdsRemarks] = useState<Record<string, string>>({});
   const [checklistDrafts, setChecklistDrafts] = useState<Record<string, ChecklistDraft>>({});
+  const [processingHistory, setProcessingHistory] = useState<Record<string, ProcessingRun[]>>({});
+
+  const fetchProcessingHistory = async (appIds: string[]) => {
+    if (!backendBaseUrl || appIds.length === 0) {
+      setProcessingHistory({});
+      return;
+    }
+
+    const entries = await Promise.all(
+      appIds.map(async (appId) => {
+        try {
+          const response = await fetch(
+            `${backendBaseUrl}/api/process-documents-history?applicationId=${encodeURIComponent(appId)}`
+          );
+
+          if (!response.ok) {
+            return [appId, [] as ProcessingRun[]] as const;
+          }
+
+          const data = (await response.json()) as ProcessingRun[];
+          return [appId, data] as const;
+        } catch (error) {
+          console.warn("Failed to fetch processing history for", appId, error);
+          return [appId, [] as ProcessingRun[]] as const;
+        }
+      })
+    );
+
+    setProcessingHistory(Object.fromEntries(entries));
+  };
 
   const fetchApplications = async () => {
     try {
@@ -81,6 +131,7 @@ export default function ScrutinyDashboard() {
 
       setChecklistDrafts(nextChecklistDrafts);
       setEdsRemarks(nextEdsRemarks);
+      await fetchProcessingHistory(apps.map((item) => item.id));
     } catch (error) {
       console.error("Error fetching applications:", error);
     } finally {
@@ -323,6 +374,38 @@ export default function ScrutinyDashboard() {
                 <button className="button button-secondary" type="button" onClick={() => sendEDS(app)}>
                   Send EDS
                 </button>
+              </div>
+
+              <div className="card" style={{ marginBottom: 12 }}>
+                <h4 className="text-sm font-semibold" style={{ marginTop: 0 }}>Backend Document Processing</h4>
+                {processingHistory[app.id]?.length ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {processingHistory[app.id].slice(0, 2).map((run) => (
+                      <div key={run.id} className="card" style={{ margin: 0 }}>
+                        <p className="text-xs" style={{ margin: 0, color: "var(--muted)" }}>
+                          Processed: {run.processedAt ? new Date(run.processedAt).toLocaleString() : "Unknown"}
+                        </p>
+                        <p className="text-sm" style={{ margin: "6px 0" }}>
+                          Success: {run.okCount || 0}/{run.count || 0}
+                        </p>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {(run.documents || []).map((doc, idx) => (
+                            <p key={`${run.id}-${idx}`} className="text-xs" style={{ margin: 0 }}>
+                              {doc.key || "document"}: {doc.ok ? "OK" : `Failed (${doc.error || "Unknown"})`}
+                              {doc.ok && typeof doc.analysis?.pageCount === "number"
+                                ? ` • pages: ${doc.analysis.pageCount}`
+                                : ""}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs" style={{ margin: 0, color: "var(--muted)" }}>
+                    No backend processing run found yet for this application.
+                  </p>
+                )}
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
