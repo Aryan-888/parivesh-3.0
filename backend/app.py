@@ -75,8 +75,26 @@ def _normalize_districts(raw: Any) -> list[str]:
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
-    CORS(app, resources={r"/api/*": {"origins": [frontend_origin]}})
+
+    def _normalize_origin(value: str) -> str:
+        return str(value or "").strip().rstrip("/")
+
+    # Accept either FRONTEND_ORIGIN or a comma-separated FRONTEND_ORIGINS list.
+    configured_origins = [
+        _normalize_origin(item)
+        for item in os.getenv("FRONTEND_ORIGINS", "").split(",")
+        if _normalize_origin(item)
+    ]
+
+    single_origin = _normalize_origin(os.getenv("FRONTEND_ORIGIN", "http://localhost:3000"))
+    if single_origin and single_origin not in configured_origins:
+        configured_origins.append(single_origin)
+
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": configured_origins}},
+        supports_credentials=True,
+    )
     app.config["MAX_CONTENT_LENGTH"] = 80 * 1024 * 1024
 
     uploads_root = Path(__file__).resolve().parent / "uploads"
