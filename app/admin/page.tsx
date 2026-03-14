@@ -59,6 +59,70 @@ interface LocationHierarchyItem {
   districts: string[];
 }
 
+interface CategoryDocumentRequirement {
+  key: string;
+  label: string;
+}
+
+interface CategoryDocumentConfig {
+  id: string;
+  category: "A" | "B1" | "B2";
+  requiredDocuments: CategoryDocumentRequirement[];
+}
+
+interface EDSPoint {
+  code: string;
+  label: string;
+}
+
+interface AffidavitPoint {
+  code: string;
+  label: string;
+}
+
+interface AffidavitTemplate {
+  id: string;
+  category: "A" | "B1" | "B2";
+  points: AffidavitPoint[];
+}
+
+const DEFAULT_REQUIRED_DOCUMENTS: CategoryDocumentRequirement[] = [
+  { key: "eiaReport", label: "EIA Report (PDF)" },
+  { key: "empPlan", label: "Environment Management Plan - EMP (PDF)" },
+  { key: "complianceReport", label: "Compliance Undertaking (PDF)" },
+];
+
+const DEFAULT_EDS_POINTS: EDSPoint[] = [
+  { code: "FEE_DETAILS", label: "Submit processing fee details." },
+  { code: "PFR", label: "Submit pre-feasibility report (PFR)." },
+  { code: "EMP", label: "Submit EMP document." },
+  { code: "FORM_1_CAF", label: "Submit Form-1 / 1-M / CAF." },
+  { code: "LAND_DOCS", label: "Submit land documents." },
+  { code: "LAND_OWNER_CONSENT", label: "Submit land-owner consent (if applicable)." },
+  { code: "LOI", label: "Submit LOI / LOI extension copy." },
+  { code: "MINING_PLAN", label: "Submit mining plan approval and approved plan." },
+  { code: "CERT_200_500", label: "Submit 200m and 500m certificates." },
+  { code: "GRAM_PANCHAYAT_NOC", label: "Submit Gram Panchayat NOC." },
+  { code: "FOREST_WILDLIFE", label: "Submit forest / wildlife / NBWL clearances (if applicable)." },
+  { code: "WATER_NOC", label: "Submit water NOC (CGWA / authority)." },
+  { code: "CTE_CTO", label: "Submit CTE / CTO compliance report." },
+  { code: "KML", label: "Submit KML with clear boundary." },
+  { code: "DRONE_VIDEO", label: "Submit drone video of applied area." },
+  { code: "GEOTAG_PHOTOS", label: "Submit geo-tagged project photos." },
+  { code: "AFFIDAVITS", label: "Submit all notarized affidavits." },
+  { code: "CER", label: "Submit CER details with local consent." },
+  { code: "GIST", label: "Submit GIST details." },
+];
+
+const DEFAULT_AFFIDAVIT_POINTS: AffidavitPoint[] = [
+  { code: "NO_OUTSIDE_MINING", label: "Affidavit: No activity outside approved lease/project boundary." },
+  { code: "WATER_NO_DISCHARGE", label: "Affidavit: No untreated/polluted discharge into natural water bodies." },
+  { code: "PLANTATION_COMMITMENT", label: "Affidavit: Plantation commitment with survival compliance." },
+  { code: "DUST_TRANSPORT_CONTROL", label: "Affidavit: Dust suppression and covered transport compliance." },
+  { code: "LITIGATION_DECLARATION", label: "Affidavit: Declaration on pending litigation and legal compliance." },
+  { code: "SIX_MONTH_REPORTING", label: "Affidavit: Six-monthly compliance reporting commitment." },
+];
+
 const normalizeDistricts = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -99,6 +163,7 @@ export default function AdminDashboard() {
   const [templates, setTemplates] = useState<GistTemplate[]>([]);
   const [sectors, setSectors] = useState<SectorParameter[]>([]);
   const [locations, setLocations] = useState<LocationHierarchyItem[]>([]);
+  const [docConfigs, setDocConfigs] = useState<CategoryDocumentConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
 
@@ -109,6 +174,18 @@ export default function AdminDashboard() {
   const [locationStateName, setLocationStateName] = useState("");
   const [locationDistricts, setLocationDistricts] = useState("");
   const [seedingLocations, setSeedingLocations] = useState(false);
+  const [docConfigCategory, setDocConfigCategory] = useState<"A" | "B1" | "B2">("A");
+  const [docKeyInput, setDocKeyInput] = useState("");
+  const [docLabelInput, setDocLabelInput] = useState("");
+  const [editingRequirements, setEditingRequirements] = useState<CategoryDocumentRequirement[]>(DEFAULT_REQUIRED_DOCUMENTS);
+  const [edsPoints, setEdsPoints] = useState<EDSPoint[]>(DEFAULT_EDS_POINTS);
+  const [edsCodeInput, setEdsCodeInput] = useState("");
+  const [edsLabelInput, setEdsLabelInput] = useState("");
+  const [affidavitTemplates, setAffidavitTemplates] = useState<AffidavitTemplate[]>([]);
+  const [affidavitCategory, setAffidavitCategory] = useState<"A" | "B1" | "B2">("A");
+  const [affidavitCodeInput, setAffidavitCodeInput] = useState("");
+  const [affidavitLabelInput, setAffidavitLabelInput] = useState("");
+  const [editingAffidavitPoints, setEditingAffidavitPoints] = useState<AffidavitPoint[]>(DEFAULT_AFFIDAVIT_POINTS);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -136,6 +213,9 @@ export default function AdminDashboard() {
       fetchTemplates(),
       fetchSectors(),
       fetchLocationHierarchy(),
+      fetchCategoryDocumentConfigs(),
+      fetchEdsPointBank(),
+      fetchAffidavitTemplates(),
     ]);
     setLoading(false);
   };
@@ -264,6 +344,65 @@ export default function AdminDashboard() {
     }
   };
 
+  const normalizeRequiredDocuments = (value: unknown): CategoryDocumentRequirement[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const rows: CategoryDocumentRequirement[] = [];
+
+    value.forEach((item) => {
+      if (!item || typeof item !== "object") {
+        return;
+      }
+
+      const raw = item as { key?: unknown; label?: unknown };
+      const key = String(raw.key || "").trim();
+      const label = String(raw.label || "").trim();
+
+      if (!key || !label || seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+      rows.push({ key, label });
+    });
+
+    return rows;
+  };
+
+  const fetchCategoryDocumentConfigs = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "categoryDocumentRequirements"));
+      const rows: CategoryDocumentConfig[] = snapshot.docs
+        .map((item) => {
+          const data = item.data() as {
+            category?: string;
+            requiredDocuments?: unknown;
+          };
+
+          const category = String(data.category || item.id || "").trim().toUpperCase();
+          if (category !== "A" && category !== "B1" && category !== "B2") {
+            return null;
+          }
+
+          const requiredDocuments = normalizeRequiredDocuments(data.requiredDocuments);
+          return {
+            id: item.id,
+            category,
+            requiredDocuments: requiredDocuments.length > 0 ? requiredDocuments : DEFAULT_REQUIRED_DOCUMENTS,
+          } as CategoryDocumentConfig;
+        })
+        .filter((item): item is CategoryDocumentConfig => item !== null)
+        .sort((a, b) => a.category.localeCompare(b.category));
+
+      setDocConfigs(rows);
+    } catch (error) {
+      console.error("Error fetching category document configs:", error);
+    }
+  };
+
   const handleRoleChange = async (uid: string, newRole: string) => {
     const targetUser = users.find((user) => user.uid === uid);
 
@@ -292,6 +431,271 @@ export default function AdminDashboard() {
     const existing = templates.find((row) => row.category === category);
     setTemplateText(existing?.template || defaultTemplate.replace("{{category}}", category));
   };
+
+  const handleDocConfigCategoryChange = (category: "A" | "B1" | "B2") => {
+    setDocConfigCategory(category);
+    const existing = docConfigs.find((item) => item.category === category);
+    setEditingRequirements(existing?.requiredDocuments || DEFAULT_REQUIRED_DOCUMENTS);
+  };
+
+  const addRequiredDocument = () => {
+    const key = docKeyInput.trim();
+    const label = docLabelInput.trim();
+
+    if (!key || !label) {
+      alert("Document key and label are required.");
+      return;
+    }
+
+    if (editingRequirements.some((item) => item.key === key)) {
+      alert("Document key already exists for this category.");
+      return;
+    }
+
+    setEditingRequirements((prev) => [...prev, { key, label }]);
+    setDocKeyInput("");
+    setDocLabelInput("");
+  };
+
+  const removeRequiredDocument = (key: string) => {
+    setEditingRequirements((prev) => prev.filter((item) => item.key !== key));
+  };
+
+  const saveCategoryDocumentConfig = async () => {
+    if (editingRequirements.length === 0) {
+      alert("At least one required document must be configured.");
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "categoryDocumentRequirements", docConfigCategory), {
+        category: docConfigCategory,
+        requiredDocuments: editingRequirements,
+        updatedAt: serverTimestamp(),
+      });
+
+      await fetchCategoryDocumentConfigs();
+      alert("Category document requirements saved.");
+    } catch (error) {
+      console.error("Error saving category document config:", error);
+      alert("Failed to save category document requirements.");
+    }
+  };
+
+  const normalizeEdsPoints = (value: unknown): EDSPoint[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const rows: EDSPoint[] = [];
+
+    value.forEach((item) => {
+      if (!item || typeof item !== "object") {
+        return;
+      }
+
+      const raw = item as { code?: unknown; label?: unknown };
+      const code = String(raw.code || "").trim();
+      const label = String(raw.label || "").trim();
+
+      if (!code || !label || seen.has(code)) {
+        return;
+      }
+
+      seen.add(code);
+      rows.push({ code, label });
+    });
+
+    return rows;
+  };
+
+  const fetchEdsPointBank = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "edsPointBank"));
+      const first = snapshot.docs[0];
+      if (!first) {
+        setEdsPoints(DEFAULT_EDS_POINTS);
+        return;
+      }
+
+      const data = first.data() as { points?: unknown };
+      const points = normalizeEdsPoints(data.points);
+      setEdsPoints(points.length > 0 ? points : DEFAULT_EDS_POINTS);
+    } catch (error) {
+      console.error("Error fetching EDS point bank:", error);
+      setEdsPoints(DEFAULT_EDS_POINTS);
+    }
+  };
+
+  const addEdsPoint = () => {
+    const code = edsCodeInput.trim().toUpperCase();
+    const label = edsLabelInput.trim();
+
+    if (!code || !label) {
+      alert("EDS code and label are required.");
+      return;
+    }
+
+    if (edsPoints.some((item) => item.code === code)) {
+      alert("EDS code already exists.");
+      return;
+    }
+
+    setEdsPoints((prev) => [...prev, { code, label }]);
+    setEdsCodeInput("");
+    setEdsLabelInput("");
+  };
+
+  const removeEdsPoint = (code: string) => {
+    setEdsPoints((prev) => prev.filter((item) => item.code !== code));
+  };
+
+  const saveEdsPointBank = async () => {
+    if (edsPoints.length === 0) {
+      alert("At least one EDS point is required.");
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "edsPointBank", "default"), {
+        points: edsPoints,
+        updatedAt: serverTimestamp(),
+      });
+
+      alert("EDS point bank saved.");
+    } catch (error) {
+      console.error("Error saving EDS point bank:", error);
+      alert("Failed to save EDS point bank.");
+    }
+  };
+
+  const resetEdsPointsToDefault = () => {
+    setEdsPoints(DEFAULT_EDS_POINTS);
+  };
+
+  const normalizeAffidavitPoints = (value: unknown): AffidavitPoint[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const rows: AffidavitPoint[] = [];
+
+    value.forEach((item) => {
+      if (!item || typeof item !== "object") {
+        return;
+      }
+
+      const raw = item as { code?: unknown; label?: unknown };
+      const code = String(raw.code || "").trim();
+      const label = String(raw.label || "").trim();
+
+      if (!code || !label || seen.has(code)) {
+        return;
+      }
+
+      seen.add(code);
+      rows.push({ code, label });
+    });
+
+    return rows;
+  };
+
+  const fetchAffidavitTemplates = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "affidavitTemplates"));
+      const rows: AffidavitTemplate[] = snapshot.docs
+        .map((item) => {
+          const data = item.data() as {
+            category?: string;
+            points?: unknown;
+          };
+
+          const category = String(data.category || item.id || "").trim().toUpperCase();
+          if (category !== "A" && category !== "B1" && category !== "B2") {
+            return null;
+          }
+
+          const points = normalizeAffidavitPoints(data.points);
+          return {
+            id: item.id,
+            category,
+            points: points.length > 0 ? points : DEFAULT_AFFIDAVIT_POINTS,
+          } as AffidavitTemplate;
+        })
+        .filter((item): item is AffidavitTemplate => item !== null)
+        .sort((a, b) => a.category.localeCompare(b.category));
+
+      setAffidavitTemplates(rows);
+    } catch (error) {
+      console.error("Error fetching affidavit templates:", error);
+    }
+  };
+
+  const handleAffidavitCategoryChange = (category: "A" | "B1" | "B2") => {
+    setAffidavitCategory(category);
+    const existing = affidavitTemplates.find((item) => item.category === category);
+    setEditingAffidavitPoints(existing?.points || DEFAULT_AFFIDAVIT_POINTS);
+  };
+
+  const addAffidavitPoint = () => {
+    const code = affidavitCodeInput.trim().toUpperCase();
+    const label = affidavitLabelInput.trim();
+
+    if (!code || !label) {
+      alert("Affidavit code and label are required.");
+      return;
+    }
+
+    if (editingAffidavitPoints.some((item) => item.code === code)) {
+      alert("Affidavit code already exists for this category.");
+      return;
+    }
+
+    setEditingAffidavitPoints((prev) => [...prev, { code, label }]);
+    setAffidavitCodeInput("");
+    setAffidavitLabelInput("");
+  };
+
+  const removeAffidavitPoint = (code: string) => {
+    setEditingAffidavitPoints((prev) => prev.filter((item) => item.code !== code));
+  };
+
+  const saveAffidavitTemplate = async () => {
+    if (editingAffidavitPoints.length === 0) {
+      alert("At least one affidavit point is required.");
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "affidavitTemplates", affidavitCategory), {
+        category: affidavitCategory,
+        points: editingAffidavitPoints,
+        updatedAt: serverTimestamp(),
+      });
+
+      await fetchAffidavitTemplates();
+      alert("Affidavit template saved.");
+    } catch (error) {
+      console.error("Error saving affidavit template:", error);
+      alert("Failed to save affidavit template.");
+    }
+  };
+
+  const resetAffidavitPointsToDefault = () => {
+    setEditingAffidavitPoints(DEFAULT_AFFIDAVIT_POINTS);
+  };
+
+  useEffect(() => {
+    const existing = docConfigs.find((item) => item.category === docConfigCategory);
+    setEditingRequirements(existing?.requiredDocuments || DEFAULT_REQUIRED_DOCUMENTS);
+  }, [docConfigCategory, docConfigs]);
+
+  useEffect(() => {
+    const existing = affidavitTemplates.find((item) => item.category === affidavitCategory);
+    setEditingAffidavitPoints(existing?.points || DEFAULT_AFFIDAVIT_POINTS);
+  }, [affidavitCategory, affidavitTemplates]);
 
   const saveTemplate = async () => {
     if (!templateText.trim()) {
@@ -571,6 +975,217 @@ export default function AdminDashboard() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">Category-wise Mandatory Documents</h2>
+            <div className="field">
+              <label>Category</label>
+              <select
+                className="select"
+                value={docConfigCategory}
+                onChange={(e) => handleDocConfigCategoryChange(e.target.value as "A" | "B1" | "B2")}
+              >
+                <option value="A">A</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+              </select>
+            </div>
+
+            <div className="grid grid-2" style={{ marginBottom: 12 }}>
+              <div className="field">
+                <label>Document Key</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={docKeyInput}
+                  onChange={(e) => setDocKeyInput(e.target.value)}
+                  placeholder="e.g. ecClearanceLetter"
+                />
+              </div>
+              <div className="field">
+                <label>Document Label</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={docLabelInput}
+                  onChange={(e) => setDocLabelInput(e.target.value)}
+                  placeholder="e.g. EC Clearance Letter (PDF)"
+                />
+              </div>
+            </div>
+
+            <button className="button button-secondary" type="button" onClick={addRequiredDocument}>
+              Add Required Document
+            </button>
+
+            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+              {editingRequirements.map((item) => (
+                <div key={item.key} className="card" style={{ margin: 0 }}>
+                  <p style={{ margin: 0 }}><strong>{item.key}</strong></p>
+                  <p style={{ margin: "6px 0", color: "var(--muted)" }}>{item.label}</p>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => removeRequiredDocument(item.key)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button className="button" type="button" onClick={saveCategoryDocumentConfig} style={{ marginTop: 12 }}>
+              Save Category Requirements
+            </button>
+
+            <div style={{ marginTop: 16 }}>
+              {docConfigs.length === 0 ? (
+                <p style={{ color: "var(--muted)" }}>No category-specific requirements configured yet.</p>
+              ) : (
+                docConfigs.map((item) => (
+                  <div key={item.id} className="card" style={{ marginTop: 10 }}>
+                    <h3 style={{ marginTop: 0 }}>Category {item.category}</h3>
+                    <ul style={{ marginBottom: 0 }}>
+                      {item.requiredDocuments.map((docItem) => (
+                        <li key={`${item.id}-${docItem.key}`}>
+                          {docItem.key}: {docItem.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">EDS Point Bank</h2>
+            <p style={{ color: "var(--muted)" }}>
+              Scrutiny team will select from these codes while issuing EDS. Proponent can see selected codes during response.
+            </p>
+
+            <div className="grid grid-2" style={{ marginBottom: 12 }}>
+              <div className="field">
+                <label>EDS Code</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={edsCodeInput}
+                  onChange={(e) => setEdsCodeInput(e.target.value)}
+                  placeholder="e.g. WATER_NOC"
+                />
+              </div>
+              <div className="field">
+                <label>EDS Label</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={edsLabelInput}
+                  onChange={(e) => setEdsLabelInput(e.target.value)}
+                  placeholder="e.g. Submit water NOC"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="button button-secondary" type="button" onClick={addEdsPoint}>
+                Add EDS Point
+              </button>
+              <button className="button button-secondary" type="button" onClick={resetEdsPointsToDefault}>
+                Reset to Default
+              </button>
+              <button className="button" type="button" onClick={saveEdsPointBank}>
+                Save EDS Point Bank
+              </button>
+            </div>
+
+            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+              {edsPoints.map((item) => (
+                <div key={item.code} className="card" style={{ margin: 0 }}>
+                  <p style={{ margin: 0 }}><strong>{item.code}</strong></p>
+                  <p style={{ margin: "6px 0", color: "var(--muted)" }}>{item.label}</p>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => removeEdsPoint(item.code)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">Affidavit Templates</h2>
+            <p style={{ color: "var(--muted)" }}>
+              Configure category-wise affidavit declarations. Proponent must accept each point and upload notarized affidavit bundle.
+            </p>
+
+            <div className="field">
+              <label>Category</label>
+              <select
+                className="select"
+                value={affidavitCategory}
+                onChange={(e) => handleAffidavitCategoryChange(e.target.value as "A" | "B1" | "B2")}
+              >
+                <option value="A">A</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+              </select>
+            </div>
+
+            <div className="grid grid-2" style={{ marginBottom: 12 }}>
+              <div className="field">
+                <label>Affidavit Code</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={affidavitCodeInput}
+                  onChange={(e) => setAffidavitCodeInput(e.target.value)}
+                  placeholder="e.g. NO_OUTSIDE_MINING"
+                />
+              </div>
+              <div className="field">
+                <label>Affidavit Label</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={affidavitLabelInput}
+                  onChange={(e) => setAffidavitLabelInput(e.target.value)}
+                  placeholder="e.g. No activity outside lease area"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="button button-secondary" type="button" onClick={addAffidavitPoint}>
+                Add Affidavit Point
+              </button>
+              <button className="button button-secondary" type="button" onClick={resetAffidavitPointsToDefault}>
+                Reset to Default
+              </button>
+              <button className="button" type="button" onClick={saveAffidavitTemplate}>
+                Save Affidavit Template
+              </button>
+            </div>
+
+            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+              {editingAffidavitPoints.map((item) => (
+                <div key={item.code} className="card" style={{ margin: 0 }}>
+                  <p style={{ margin: 0 }}><strong>{item.code}</strong></p>
+                  <p style={{ margin: "6px 0", color: "var(--muted)" }}>{item.label}</p>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => removeAffidavitPoint(item.code)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 

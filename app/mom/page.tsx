@@ -35,12 +35,49 @@ interface Application {
   sector: string;
   status: string;
   momText?: string;
+  documents?: Array<{
+    key?: string;
+    name?: string;
+    url?: string;
+    contentType?: string;
+  }>;
   eds?: {
+    active?: boolean;
+    codes?: string[];
     remarks?: string;
     responseNotes?: string;
+    requestedAt?: string;
+    respondedAt?: string;
+    resubmissionCount?: number;
   };
   checklist?: {
+    documentsVerified?: boolean;
+    paymentVerified?: boolean;
     details?: string;
+    lockedByScrutiny?: boolean;
+    updatedAt?: string;
+  };
+  affidavits?: {
+    acceptedCodes?: string[];
+    points?: Array<{
+      code?: string;
+      label?: string;
+    }>;
+    bundle?: {
+      name?: string;
+      url?: string;
+    } | null;
+  };
+  conditionalCompliance?: {
+    selections?: Record<string, boolean>;
+    evidence?: Record<
+      string,
+      {
+        key?: string;
+        name?: string;
+        url?: string;
+      } | null
+    >;
   };
 }
 
@@ -54,11 +91,167 @@ interface SectorParameter {
   defaultNotes: string;
 }
 
+const CONDITIONAL_REQUIREMENT_META = [
+  { key: "nbwlApplicable", evidenceKey: "nbwlClearance", label: "NBWL Clearance" },
+  { key: "wildlifePlanApplicable", evidenceKey: "wildlifeManagementPlan", label: "Wildlife Management Plan" },
+  { key: "forestNocApplicable", evidenceKey: "forestNoc", label: "Forest NOC" },
+  { key: "waterNocApplicable", evidenceKey: "waterNoc", label: "Water NOC / Permission" },
+  { key: "droneVideoApplicable", evidenceKey: "droneEvidence", label: "Drone Evidence" },
+  { key: "kmlApplicable", evidenceKey: "kmlEvidence", label: "KML / Boundary Evidence" },
+];
+
+const toSafeFileName = (value: string): string => {
+  const normalized = (value || "project").trim().replace(/\s+/g, "_");
+  const cleaned = normalized.replace(/[^a-zA-Z0-9._-]/g, "");
+  return cleaned || "project";
+};
+
 export default function MoMDashboard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [gists, setGists] = useState<{ [key: string]: string }>({});
   const [generatingGist, setGeneratingGist] = useState<{ [key: string]: boolean }>({});
+
+  const getMissingAffidavitCodes = (app: Application): string[] => {
+    const points = (app.affidavits?.points || []).map((item) => String(item.code || "").trim()).filter(Boolean);
+    const accepted = new Set((app.affidavits?.acceptedCodes || []).map((item) => String(item || "").trim()).filter(Boolean));
+    return points.filter((item) => !accepted.has(item));
+  };
+
+  const hasConditionalEvidence = (app: Application, evidenceKey: string): boolean => {
+    if (app.conditionalCompliance?.evidence?.[evidenceKey]?.url) {
+      return true;
+    }
+
+    return (app.documents || []).some(
+      (docItem) => String(docItem.key || "").trim() === evidenceKey && !!docItem.url
+    );
+  };
+
+  const getMissingConditionalEvidenceLabels = (app: Application): string[] => {
+    return CONDITIONAL_REQUIREMENT_META
+      .filter((item) => !!app.conditionalCompliance?.selections?.[item.key] && !hasConditionalEvidence(app, item.evidenceKey))
+      .map((item) => item.label);
+  };
+
+  const buildComplianceSummaryText = (app: Application): string => {
+    const docRows = (app.documents || []).map((item, index) => {
+      const key = item.key || `document_${index + 1}`;
+      const name = item.name || "Unnamed";
+      const url = item.url || "URL not available";
+      return `- ${key}: ${name} | ${url}`;
+    });
+
+    const conditionalRows = CONDITIONAL_REQUIREMENT_META.map((item) => {
+      const applicable = !!app.conditionalCompliance?.selections?.[item.key];
+      const status = !applicable
+        ? "Not applicable"
+        : hasConditionalEvidence(app, item.evidenceKey)
+        ? "Applicable and evidence attached"
+        : "Applicable but evidence missing";
+      return `- ${item.label}: ${status}`;
+    });
+
+    const missingAffidavits = getMissingAffidavitCodes(app);
+    const missingConditional = getMissingConditionalEvidenceLabels(app);
+    const checklistReady = !!app.checklist?.documentsVerified && !!app.checklist?.paymentVerified;
+    const affidavitReady = missingAffidavits.length === 0 && !!app.affidavits?.bundle?.url;
+    const conditionalReady = missingConditional.length === 0;
+    const overallReady = checklistReady && affidavitReady && conditionalReady;
+
+    return [
+      "PARIVESH Compliance Presentation Summary",
+      "",
+      `Overall Readiness: ${overallReady ? "READY FOR COMMITTEE REVIEW" : "FOLLOW-UP REQUIRED"}`,
+      `Checklist Readiness: ${checklistReady ? "Compliant" : "Action Required"}`,
+      `Affidavit Readiness: ${affidavitReady ? "Compliant" : "Action Required"}`,
+      `Conditional Evidence Readiness: ${conditionalReady ? "Compliant" : "Action Required"}`,
+      "",
+      `Application ID: ${app.id}`,
+      `Project Name: ${app.projectName}`,
+      `Location: ${app.location}`,
+      `Category: ${app.category}`,
+      `Sector: ${app.sector}`,
+      `Current Status: ${app.status}`,
+      "",
+      "Scrutiny Closure Snapshot",
+      `- EDS Codes: ${(app.eds?.codes || []).length ? (app.eds?.codes || []).join(", ") : "None"}`,
+      `- EDS Remarks: ${app.eds?.remarks || "Not provided"}`,
+      `- PP Response: ${app.eds?.responseNotes || "Not provided"}`,
+      `- Resubmissions: ${app.eds?.resubmissionCount || 0}`,
+      `- Checklist Documents Verified: ${app.checklist?.documentsVerified ? "Compliant" : "Action Required"}`,
+      `- Checklist Payment Verified: ${app.checklist?.paymentVerified ? "Compliant" : "Action Required"}`,
+      `- Checklist Notes: ${app.checklist?.details || "Not provided"}`,
+      "",
+      "Affidavit Compliance",
+      `- Accepted Declarations: ${(app.affidavits?.acceptedCodes || []).length}`,
+      `- Total Declarations: ${(app.affidavits?.points || []).length}`,
+      `- Missing Declarations: ${missingAffidavits.length ? missingAffidavits.join(", ") : "None"}`,
+      `- Affidavit Bundle: ${app.affidavits?.bundle?.url ? "Uploaded" : "Not uploaded"}`,
+      `- Affidavit Bundle Link: ${app.affidavits?.bundle?.url || "Not available"}`,
+      "",
+      "Conditional Regulatory Evidence",
+      ...conditionalRows,
+      `- Missing Conditional Evidence: ${missingConditional.length ? missingConditional.join(", ") : "None"}`,
+      "",
+      "Uploaded Forms and Evidence Links",
+      ...(docRows.length ? docRows : ["- No documents available"]),
+      "",
+      "MoM Gist",
+      app.momText || gists[app.id] || "No meeting text available.",
+    ].join("\n");
+  };
+
+  const downloadTextFile = (filename: string, content: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadComplianceSummary = (appId: string) => {
+    const app = applications.find((a) => a.id === appId);
+    if (!app) {
+      return;
+    }
+
+    const summary = buildComplianceSummaryText(app);
+    downloadTextFile(`Compliance_Summary_${toSafeFileName(app.projectName)}.txt`, summary, "text/plain;charset=utf-8");
+  };
+
+  const handleDownloadComplianceBundleJson = (appId: string) => {
+    const app = applications.find((a) => a.id === appId);
+    if (!app) {
+      return;
+    }
+
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      applicationId: app.id,
+      projectName: app.projectName,
+      category: app.category,
+      sector: app.sector,
+      status: app.status,
+      eds: app.eds || {},
+      checklist: app.checklist || {},
+      affidavits: app.affidavits || {},
+      conditionalCompliance: app.conditionalCompliance || {},
+      documents: app.documents || [],
+      momText: app.momText || gists[app.id] || "",
+      complianceSummaryText: buildComplianceSummaryText(app),
+    };
+
+    downloadTextFile(
+      `Compliance_Bundle_${toSafeFileName(app.projectName)}.json`,
+      JSON.stringify(payload, null, 2),
+      "application/json;charset=utf-8"
+    );
+  };
 
   const getTemplateForCategory = async (category: string): Promise<string> => {
     const normalized = ["A", "B1", "B2"].includes(category) ? category : "A";
@@ -237,6 +430,8 @@ export default function MoMDashboard() {
   };
 
   const generateDocx = async (app: Application) => {
+    const complianceSummary = buildComplianceSummaryText(app);
+
     const docxFile = new Document({
       sections: [
         {
@@ -277,6 +472,13 @@ export default function MoMDashboard() {
             new Paragraph({
               children: [new TextRun(app.momText || gists[app.id] || "No meeting text available.")],
             }),
+            new Paragraph({
+              text: "Compliance Summary:",
+              heading: HeadingLevel.HEADING_2,
+            }),
+            new Paragraph({
+              children: [new TextRun(complianceSummary)],
+            }),
           ],
         },
       ],
@@ -289,7 +491,7 @@ export default function MoMDashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `MoM_${app.projectName}.docx`;
+    a.download = `MoM_${toSafeFileName(app.projectName)}.docx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -297,6 +499,7 @@ export default function MoMDashboard() {
   };
 
   const generatePdf = (app: Application) => {
+    const complianceSummary = buildComplianceSummaryText(app);
     const pdf = new jsPDF();
     pdf.setFontSize(20);
     pdf.text("Minutes of Meeting", 20, 30);
@@ -315,7 +518,12 @@ export default function MoMDashboard() {
     const splitText = pdf.splitTextToSize(summaryText, 170);
     pdf.text(splitText, 20, 110);
 
-    pdf.save(`MoM_${app.projectName}.pdf`);
+    const complianceText = pdf.splitTextToSize(`Compliance Summary\n${complianceSummary}`, 170);
+    pdf.addPage();
+    pdf.setFontSize(12);
+    pdf.text(complianceText, 20, 20);
+
+    pdf.save(`MoM_${toSafeFileName(app.projectName)}.pdf`);
   };
 
   useEffect(() => {
@@ -428,6 +636,18 @@ export default function MoMDashboard() {
                   className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600"
                 >
                   Download DOCX
+                </button>
+                <button
+                  onClick={() => handleDownloadComplianceSummary(app.id)}
+                  className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800"
+                >
+                  Download Presentation Summary (TXT)
+                </button>
+                <button
+                  onClick={() => handleDownloadComplianceBundleJson(app.id)}
+                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
+                >
+                  Download Compliance Bundle (JSON)
                 </button>
               </div>
             </div>

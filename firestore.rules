@@ -71,6 +71,10 @@ service cloud.firestore {
             && request.resource.data.payment.method in ["upi", "qr"]
             && request.resource.data.documents is list
             && request.resource.data.documents.size() >= 3
+            && request.resource.data.affidavits.acceptedCodes is list
+            && request.resource.data.affidavits.bundle.url is string
+            && request.resource.data.conditionalCompliance.selections is map
+            && request.resource.data.conditionalCompliance.evidence is map
           )
         );
 
@@ -99,6 +103,8 @@ service cloud.firestore {
             "sector",
             "payment",
             "documents",
+            "affidavits",
+            "conditionalCompliance",
             "status",
             "eds",
             "updatedAt"
@@ -115,6 +121,10 @@ service cloud.firestore {
               && request.resource.data.payment.method in ["upi", "qr"]
               && request.resource.data.documents is list
               && request.resource.data.documents.size() >= 3
+              && request.resource.data.affidavits.acceptedCodes is list
+              && request.resource.data.affidavits.bundle.url is string
+              && request.resource.data.conditionalCompliance.selections is map
+              && request.resource.data.conditionalCompliance.evidence is map
             )
           )
         )
@@ -166,6 +176,21 @@ service cloud.firestore {
     }
 
     match /locationHierarchy/{stateId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasRole("admin");
+    }
+
+    match /categoryDocumentRequirements/{categoryId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasRole("admin");
+    }
+
+    match /edsPointBank/{docId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if hasRole("admin");
+    }
+
+    match /affidavitTemplates/{categoryId} {
       allow read: if isSignedIn();
       allow create, update, delete: if hasRole("admin");
     }

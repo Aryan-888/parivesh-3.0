@@ -32,10 +32,25 @@ interface LocationHierarchy {
   districtList?: string[] | string;
 }
 
-type RequiredDocKey = "eiaReport" | "empPlan" | "complianceReport";
+interface RequiredDocumentDefinition {
+  key: string;
+  label: string;
+}
+
+interface AffidavitPoint {
+  code: string;
+  label: string;
+}
+
+interface ConditionalComplianceRequirement {
+  key: string;
+  label: string;
+  evidenceKey: string;
+  evidenceLabel: string;
+}
 
 type StoredDocument = {
-  key: RequiredDocKey;
+  key: string;
   name: string;
   url: string;
   contentType: string;
@@ -61,17 +76,90 @@ type ExistingApplication = {
   eds?: {
     active?: boolean;
     remarks?: string;
+    codes?: string[];
     requestedAt?: string;
     responseNotes?: string;
     respondedAt?: string;
     resubmissionCount?: number;
   };
+  affidavits?: {
+    acceptedCodes?: string[];
+    points?: AffidavitPoint[];
+    bundle?: StoredDocument | null;
+  };
+  conditionalCompliance?: {
+    selections?: Record<string, boolean>;
+    evidence?: Record<string, StoredDocument | null>;
+  };
 };
 
-const REQUIRED_DOCUMENTS: Array<{ key: RequiredDocKey; label: string }> = [
+const DEFAULT_REQUIRED_DOCUMENTS: RequiredDocumentDefinition[] = [
   { key: "eiaReport", label: "EIA Report (PDF)" },
   { key: "empPlan", label: "Environment Management Plan - EMP (PDF)" },
   { key: "complianceReport", label: "Compliance Undertaking (PDF)" },
+];
+
+const CATEGORY_KEYS = ["A", "B1", "B2"] as const;
+type CategoryKey = (typeof CATEGORY_KEYS)[number];
+
+const DEFAULT_CATEGORY_REQUIREMENTS: Record<CategoryKey, RequiredDocumentDefinition[]> = {
+  A: DEFAULT_REQUIRED_DOCUMENTS,
+  B1: DEFAULT_REQUIRED_DOCUMENTS,
+  B2: DEFAULT_REQUIRED_DOCUMENTS,
+};
+
+const DEFAULT_AFFIDAVIT_POINTS: AffidavitPoint[] = [
+  { code: "NO_OUTSIDE_MINING", label: "No activity outside approved lease/project boundary." },
+  { code: "WATER_NO_DISCHARGE", label: "No untreated/polluted discharge into natural water bodies." },
+  { code: "PLANTATION_COMMITMENT", label: "Plantation commitment with survival compliance." },
+  { code: "DUST_TRANSPORT_CONTROL", label: "Dust suppression and covered transport compliance." },
+  { code: "LITIGATION_DECLARATION", label: "Declaration on pending litigation and legal compliance." },
+  { code: "SIX_MONTH_REPORTING", label: "Six-monthly compliance reporting commitment." },
+];
+
+const DEFAULT_AFFIDAVIT_TEMPLATES: Record<CategoryKey, AffidavitPoint[]> = {
+  A: DEFAULT_AFFIDAVIT_POINTS,
+  B1: DEFAULT_AFFIDAVIT_POINTS,
+  B2: DEFAULT_AFFIDAVIT_POINTS,
+};
+
+const DEFAULT_CONDITIONAL_REQUIREMENTS: ConditionalComplianceRequirement[] = [
+  {
+    key: "nbwlApplicable",
+    label: "NBWL clearance is applicable (e.g. protected area proximity).",
+    evidenceKey: "nbwlClearance",
+    evidenceLabel: "NBWL Clearance Document (PDF)",
+  },
+  {
+    key: "wildlifePlanApplicable",
+    label: "Wildlife management / conservation plan is applicable.",
+    evidenceKey: "wildlifeManagementPlan",
+    evidenceLabel: "Wildlife Management Plan (PDF)",
+  },
+  {
+    key: "forestNocApplicable",
+    label: "Forest NOC is applicable for this project.",
+    evidenceKey: "forestNoc",
+    evidenceLabel: "Forest NOC Document (PDF)",
+  },
+  {
+    key: "waterNocApplicable",
+    label: "Water NOC / CGWA permission is applicable.",
+    evidenceKey: "waterNoc",
+    evidenceLabel: "Water NOC / Permission Document (PDF)",
+  },
+  {
+    key: "droneVideoApplicable",
+    label: "Drone survey evidence is applicable.",
+    evidenceKey: "droneEvidence",
+    evidenceLabel: "Drone Video Compliance Note / Evidence (PDF)",
+  },
+  {
+    key: "kmlApplicable",
+    label: "KML/boundary submission is applicable.",
+    evidenceKey: "kmlEvidence",
+    evidenceLabel: "KML / Boundary Evidence (PDF)",
+  },
 ];
 
 const DEFAULT_SECTOR_OPTIONS = [
@@ -127,6 +215,87 @@ const normalizeDistricts = (value: unknown): string[] => {
   return [];
 };
 
+const normalizeRequiredDocuments = (value: unknown): RequiredDocumentDefinition[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const rows: RequiredDocumentDefinition[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const raw = item as { key?: unknown; label?: unknown };
+    const key = String(raw.key || "").trim();
+    const label = String(raw.label || "").trim();
+
+    if (!key || !label || seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    rows.push({ key, label });
+  });
+
+  return rows;
+};
+
+const normalizeAffidavitPoints = (value: unknown): AffidavitPoint[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const rows: AffidavitPoint[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const raw = item as { code?: unknown; label?: unknown };
+    const code = String(raw.code || "").trim();
+    const label = String(raw.label || "").trim();
+
+    if (!code || !label || seen.has(code)) {
+      return;
+    }
+
+    seen.add(code);
+    rows.push({ code, label });
+  });
+
+  return rows;
+};
+
+const createDocumentState = (requirements: RequiredDocumentDefinition[]): Record<string, null> => {
+  return requirements.reduce<Record<string, null>>((acc, item) => {
+    acc[item.key] = null;
+    return acc;
+  }, {});
+};
+
+const createConditionalSelectionState = (
+  requirements: ConditionalComplianceRequirement[]
+): Record<string, boolean> => {
+  return requirements.reduce<Record<string, boolean>>((acc, item) => {
+    acc[item.key] = false;
+    return acc;
+  }, {});
+};
+
+const createConditionalEvidenceState = (
+  requirements: ConditionalComplianceRequirement[]
+): Record<string, null> => {
+  return requirements.reduce<Record<string, null>>((acc, item) => {
+    acc[item.evidenceKey] = null;
+    return acc;
+  }, {});
+};
+
 export default function Page() {
   const backendBaseUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
   const [projectName, setProjectName] = useState("");
@@ -138,6 +307,12 @@ export default function Page() {
   const [sector, setSector] = useState("");
   const [availableSectors, setAvailableSectors] = useState<SectorParameter[]>([]);
   const [locationHierarchy, setLocationHierarchy] = useState<Record<string, string[]>>({});
+  const [categoryRequirements, setCategoryRequirements] = useState<Record<CategoryKey, RequiredDocumentDefinition[]>>(
+    DEFAULT_CATEGORY_REQUIREMENTS
+  );
+  const [affidavitTemplates, setAffidavitTemplates] = useState<Record<CategoryKey, AffidavitPoint[]>>(
+    DEFAULT_AFFIDAVIT_TEMPLATES
+  );
 
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "qr">("upi");
   const [paymentReference, setPaymentReference] = useState("");
@@ -145,21 +320,28 @@ export default function Page() {
   const [paymentVerifiedAt, setPaymentVerifiedAt] = useState<string | null>(null);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
 
-  const [documents, setDocuments] = useState<Record<RequiredDocKey, File | null>>({
-    eiaReport: null,
-    empPlan: null,
-    complianceReport: null,
-  });
-  const [existingDocuments, setExistingDocuments] = useState<Record<RequiredDocKey, StoredDocument | null>>({
-    eiaReport: null,
-    empPlan: null,
-    complianceReport: null,
-  });
+  const [documents, setDocuments] = useState<Record<string, File | null>>(createDocumentState(DEFAULT_REQUIRED_DOCUMENTS));
+  const [existingDocuments, setExistingDocuments] = useState<Record<string, StoredDocument | null>>(
+    createDocumentState(DEFAULT_REQUIRED_DOCUMENTS)
+  );
 
   const [pendingApplications, setPendingApplications] = useState<ExistingApplication[]>([]);
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null);
   const [editingApplicationStatus, setEditingApplicationStatus] = useState<"draft" | "eds" | null>(null);
   const [edsResponseNotes, setEdsResponseNotes] = useState("");
+  const [acceptedAffidavitCodes, setAcceptedAffidavitCodes] = useState<string[]>([]);
+  const [affidavitBundleFile, setAffidavitBundleFile] = useState<File | null>(null);
+  const [existingAffidavitBundle, setExistingAffidavitBundle] = useState<StoredDocument | null>(null);
+  const [conditionalRequirements] = useState<ConditionalComplianceRequirement[]>(DEFAULT_CONDITIONAL_REQUIREMENTS);
+  const [conditionalSelections, setConditionalSelections] = useState<Record<string, boolean>>(
+    createConditionalSelectionState(DEFAULT_CONDITIONAL_REQUIREMENTS)
+  );
+  const [conditionalEvidenceFiles, setConditionalEvidenceFiles] = useState<Record<string, File | null>>(
+    createConditionalEvidenceState(DEFAULT_CONDITIONAL_REQUIREMENTS)
+  );
+  const [existingConditionalEvidence, setExistingConditionalEvidence] = useState<Record<string, StoredDocument | null>>(
+    createConditionalEvidenceState(DEFAULT_CONDITIONAL_REQUIREMENTS)
+  );
 
   const [loading, setLoading] = useState(false);
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
@@ -185,8 +367,33 @@ export default function Page() {
   }, [availableSectors]);
 
   const isCustomSector = !!sector.trim() && !sectorOptions.includes(sector.trim());
+  const activeRequiredDocuments = categoryRequirements[category as CategoryKey] || DEFAULT_REQUIRED_DOCUMENTS;
+  const activeAffidavitPoints = affidavitTemplates[category as CategoryKey] || DEFAULT_AFFIDAVIT_POINTS;
+
+  useEffect(() => {
+    setDocuments((prev) => {
+      const next = { ...prev };
+      activeRequiredDocuments.forEach((item) => {
+        if (!(item.key in next)) {
+          next[item.key] = null;
+        }
+      });
+      return next;
+    });
+
+    setExistingDocuments((prev) => {
+      const next = { ...prev };
+      activeRequiredDocuments.forEach((item) => {
+        if (!(item.key in next)) {
+          next[item.key] = null;
+        }
+      });
+      return next;
+    });
+  }, [activeRequiredDocuments]);
 
   const resetForm = () => {
+    const resetRequirements = categoryRequirements.A || DEFAULT_REQUIRED_DOCUMENTS;
     setProjectName("");
     setLocation("");
     setStateName("");
@@ -198,19 +405,17 @@ export default function Page() {
     setPaymentReference("");
     setPaymentVerified(false);
     setPaymentVerifiedAt(null);
-    setDocuments({
-      eiaReport: null,
-      empPlan: null,
-      complianceReport: null,
-    });
-    setExistingDocuments({
-      eiaReport: null,
-      empPlan: null,
-      complianceReport: null,
-    });
+    setDocuments(createDocumentState(resetRequirements));
+    setExistingDocuments(createDocumentState(resetRequirements));
     setEditingApplicationId(null);
     setEditingApplicationStatus(null);
     setEdsResponseNotes("");
+    setAcceptedAffidavitCodes([]);
+    setAffidavitBundleFile(null);
+    setExistingAffidavitBundle(null);
+    setConditionalSelections(createConditionalSelectionState(DEFAULT_CONDITIONAL_REQUIREMENTS));
+    setConditionalEvidenceFiles(createConditionalEvidenceState(DEFAULT_CONDITIONAL_REQUIREMENTS));
+    setExistingConditionalEvidence(createConditionalEvidenceState(DEFAULT_CONDITIONAL_REQUIREMENTS));
   };
 
   const getBackendAuthHeaders = async () => {
@@ -328,6 +533,68 @@ export default function Page() {
     }
   };
 
+  const loadCategoryRequirements = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "categoryDocumentRequirements"));
+      const map: Record<CategoryKey, RequiredDocumentDefinition[]> = {
+        ...DEFAULT_CATEGORY_REQUIREMENTS,
+      };
+
+      snapshot.docs.forEach((item) => {
+        const data = item.data() as {
+          category?: string;
+          requiredDocuments?: unknown;
+        };
+
+        const categoryName = String(data.category || item.id || "").trim().toUpperCase();
+        if (!CATEGORY_KEYS.includes(categoryName as CategoryKey)) {
+          return;
+        }
+
+        const normalized = normalizeRequiredDocuments(data.requiredDocuments);
+        if (normalized.length > 0) {
+          map[categoryName as CategoryKey] = normalized;
+        }
+      });
+
+      setCategoryRequirements(map);
+    } catch (error) {
+      console.error("Error loading category requirements:", error);
+      setCategoryRequirements(DEFAULT_CATEGORY_REQUIREMENTS);
+    }
+  };
+
+  const loadAffidavitTemplates = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "affidavitTemplates"));
+      const map: Record<CategoryKey, AffidavitPoint[]> = {
+        ...DEFAULT_AFFIDAVIT_TEMPLATES,
+      };
+
+      snapshot.docs.forEach((item) => {
+        const data = item.data() as {
+          category?: string;
+          points?: unknown;
+        };
+
+        const categoryName = String(data.category || item.id || "").trim().toUpperCase();
+        if (!CATEGORY_KEYS.includes(categoryName as CategoryKey)) {
+          return;
+        }
+
+        const normalized = normalizeAffidavitPoints(data.points);
+        if (normalized.length > 0) {
+          map[categoryName as CategoryKey] = normalized;
+        }
+      });
+
+      setAffidavitTemplates(map);
+    } catch (error) {
+      console.error("Error loading affidavit templates:", error);
+      setAffidavitTemplates(DEFAULT_AFFIDAVIT_TEMPLATES);
+    }
+  };
+
   const loadPendingApplications = async () => {
     try {
       const user = auth.currentUser;
@@ -372,6 +639,8 @@ export default function Page() {
 
       loadSectors();
       loadLocationHierarchy();
+      loadCategoryRequirements();
+      loadAffidavitTemplates();
       loadPendingApplications();
     });
 
@@ -392,6 +661,9 @@ export default function Page() {
   }, [districtName, districts, stateName]);
 
   const startEditing = (app: ExistingApplication) => {
+    const editingCategory = (app.category || "A") as CategoryKey;
+    const requirementsForEditing = categoryRequirements[editingCategory] || DEFAULT_REQUIRED_DOCUMENTS;
+
     setEditingApplicationId(app.id);
     setEditingApplicationStatus(app.status);
 
@@ -400,7 +672,7 @@ export default function Page() {
     setStateName(app.state || "");
     setDistrictName(app.district || "");
     setDescription(app.description || "");
-    setCategory(app.category || "A");
+    setCategory(editingCategory);
     setSector(app.sector || "");
 
     setPaymentMethod(app.payment?.method || "upi");
@@ -408,24 +680,41 @@ export default function Page() {
     setPaymentVerified(app.payment?.status === "verified");
     setPaymentVerifiedAt(app.payment?.verifiedAt || null);
 
-    const docMap: Record<RequiredDocKey, StoredDocument | null> = {
-      eiaReport: null,
-      empPlan: null,
-      complianceReport: null,
-    };
+    const docMap = createDocumentState(requirementsForEditing) as Record<string, StoredDocument | null>;
 
     (app.documents || []).forEach((item) => {
-      docMap[item.key] = item;
+      if (item.key) {
+        docMap[item.key] = item;
+      }
     });
 
     setExistingDocuments(docMap);
-    setDocuments({
-      eiaReport: null,
-      empPlan: null,
-      complianceReport: null,
-    });
+    setDocuments(createDocumentState(requirementsForEditing));
 
     setEdsResponseNotes(app.eds?.responseNotes || "");
+    setAcceptedAffidavitCodes(
+      Array.isArray(app.affidavits?.acceptedCodes)
+        ? app.affidavits?.acceptedCodes.map((item) => String(item).trim()).filter(Boolean)
+        : []
+    );
+    setExistingAffidavitBundle(app.affidavits?.bundle || null);
+    setAffidavitBundleFile(null);
+
+    const nextSelections = createConditionalSelectionState(conditionalRequirements);
+    const storedSelections = app.conditionalCompliance?.selections || {};
+    Object.keys(nextSelections).forEach((key) => {
+      nextSelections[key] = !!storedSelections[key];
+    });
+    setConditionalSelections(nextSelections);
+
+    const nextEvidence = createConditionalEvidenceState(conditionalRequirements) as Record<string, StoredDocument | null>;
+    const storedEvidence = app.conditionalCompliance?.evidence || {};
+    Object.keys(nextEvidence).forEach((key) => {
+      const item = storedEvidence[key];
+      nextEvidence[key] = item || null;
+    });
+    setExistingConditionalEvidence(nextEvidence);
+    setConditionalEvidenceFiles(createConditionalEvidenceState(conditionalRequirements));
   };
 
   const handleVerifyPayment = async () => {
@@ -467,6 +756,10 @@ export default function Page() {
         description,
         category,
         sector,
+        conditionalCompliance: {
+          selections: conditionalSelections,
+          evidence: existingConditionalEvidence,
+        },
         status: "draft",
         ownerId: user.uid,
         ownerEmail: user.email || "",
@@ -515,12 +808,42 @@ export default function Page() {
       return;
     }
 
-    const missingDocs = REQUIRED_DOCUMENTS.filter(
+    const missingDocs = activeRequiredDocuments.filter(
       (item) => !documents[item.key] && !existingDocuments[item.key]
     );
 
     if (missingDocs.length > 0) {
       alert(`Please upload all mandatory documents: ${missingDocs.map((item) => item.label).join(", ")}`);
+      return;
+    }
+
+    const missingAffidavitDeclarations = activeAffidavitPoints.filter(
+      (item) => !acceptedAffidavitCodes.includes(item.code)
+    );
+
+    if (missingAffidavitDeclarations.length > 0) {
+      alert(`Please accept all affidavit declarations: ${missingAffidavitDeclarations.map((item) => item.code).join(", ")}`);
+      return;
+    }
+
+    if (!affidavitBundleFile && !existingAffidavitBundle) {
+      alert("Please upload notarized affidavit bundle PDF before submission.");
+      return;
+    }
+
+    const missingConditionalEvidence = conditionalRequirements.filter((item) => {
+      if (!conditionalSelections[item.key]) {
+        return false;
+      }
+      return !conditionalEvidenceFiles[item.evidenceKey] && !existingConditionalEvidence[item.evidenceKey];
+    });
+
+    if (missingConditionalEvidence.length > 0) {
+      alert(
+        `Please upload conditional evidence: ${missingConditionalEvidence
+          .map((item) => item.evidenceLabel)
+          .join(", ")}`
+      );
       return;
     }
 
@@ -538,8 +861,12 @@ export default function Page() {
       }
 
       const uploadedDocuments = [] as StoredDocument[];
+      let savedAffidavitBundle = existingAffidavitBundle;
+      const savedConditionalEvidence = {
+        ...existingConditionalEvidence,
+      } as Record<string, StoredDocument | null>;
 
-      for (const requiredDoc of REQUIRED_DOCUMENTS) {
+      for (const requiredDoc of activeRequiredDocuments) {
         const file = documents[requiredDoc.key];
 
         if (file) {
@@ -603,6 +930,132 @@ export default function Page() {
         }
       }
 
+      if (affidavitBundleFile) {
+        if (affidavitBundleFile.type !== "application/pdf") {
+          alert("Affidavit bundle must be a PDF file.");
+          setUploadingDocuments(false);
+          setLoading(false);
+          return;
+        }
+
+        const maxFileSize = 20 * 1024 * 1024;
+        if (affidavitBundleFile.size > maxFileSize) {
+          alert("Affidavit bundle exceeds 20MB size limit.");
+          setUploadingDocuments(false);
+          setLoading(false);
+          return;
+        }
+
+        if (backendBaseUrl) {
+          const payload = new FormData();
+          payload.append("ownerId", user.uid);
+          payload.append("docKey", "affidavitBundle");
+          payload.append("file", affidavitBundleFile);
+
+          const response = await fetch(`${backendBaseUrl}/api/uploads`, {
+            method: "POST",
+            headers: await getBackendAuthHeaders(),
+            body: payload,
+          });
+
+          if (!response.ok) {
+            const body = (await response.json().catch(() => ({}))) as { message?: string };
+            throw new Error(body.message || "Backend upload failed for affidavit bundle.");
+          }
+
+          const uploaded = (await response.json()) as StoredDocument;
+          savedAffidavitBundle = {
+            key: "affidavitBundle",
+            name: uploaded.name,
+            url: uploaded.url,
+            contentType: uploaded.contentType || affidavitBundleFile.type,
+          };
+        } else {
+          const filePath = `applications/${user.uid}/${Date.now()}_affidavitBundle_${affidavitBundleFile.name}`;
+          const storageRef = ref(storage, filePath);
+          await uploadBytes(storageRef, affidavitBundleFile);
+          const fileUrl = await getDownloadURL(storageRef);
+
+          savedAffidavitBundle = {
+            key: "affidavitBundle",
+            name: affidavitBundleFile.name,
+            url: fileUrl,
+            contentType: affidavitBundleFile.type,
+          };
+        }
+      }
+
+      if (savedAffidavitBundle) {
+        uploadedDocuments.push(savedAffidavitBundle);
+      }
+
+      for (const requirement of conditionalRequirements) {
+        if (!conditionalSelections[requirement.key]) {
+          savedConditionalEvidence[requirement.evidenceKey] = null;
+          continue;
+        }
+
+        const file = conditionalEvidenceFiles[requirement.evidenceKey];
+        if (file) {
+          if (file.type !== "application/pdf") {
+            alert(`${requirement.evidenceLabel} must be a PDF file.`);
+            setUploadingDocuments(false);
+            setLoading(false);
+            return;
+          }
+
+          const maxFileSize = 20 * 1024 * 1024;
+          if (file.size > maxFileSize) {
+            alert(`${requirement.evidenceLabel} exceeds 20MB size limit.`);
+            setUploadingDocuments(false);
+            setLoading(false);
+            return;
+          }
+
+          if (backendBaseUrl) {
+            const payload = new FormData();
+            payload.append("ownerId", user.uid);
+            payload.append("docKey", requirement.evidenceKey);
+            payload.append("file", file);
+
+            const response = await fetch(`${backendBaseUrl}/api/uploads`, {
+              method: "POST",
+              headers: await getBackendAuthHeaders(),
+              body: payload,
+            });
+
+            if (!response.ok) {
+              const body = (await response.json().catch(() => ({}))) as { message?: string };
+              throw new Error(body.message || `Backend upload failed for ${requirement.evidenceLabel}.`);
+            }
+
+            const uploaded = (await response.json()) as StoredDocument;
+            savedConditionalEvidence[requirement.evidenceKey] = {
+              key: requirement.evidenceKey,
+              name: uploaded.name,
+              url: uploaded.url,
+              contentType: uploaded.contentType || file.type,
+            };
+          } else {
+            const filePath = `applications/${user.uid}/${Date.now()}_${requirement.evidenceKey}_${file.name}`;
+            const storageRef = ref(storage, filePath);
+            await uploadBytes(storageRef, file);
+            const fileUrl = await getDownloadURL(storageRef);
+
+            savedConditionalEvidence[requirement.evidenceKey] = {
+              key: requirement.evidenceKey,
+              name: file.name,
+              url: fileUrl,
+              contentType: file.type,
+            };
+          }
+        }
+
+        if (savedConditionalEvidence[requirement.evidenceKey]) {
+          uploadedDocuments.push(savedConditionalEvidence[requirement.evidenceKey] as StoredDocument);
+        }
+      }
+
       const baseData = {
         projectName,
         location,
@@ -618,6 +1071,15 @@ export default function Page() {
           verifiedAt: paymentVerifiedAt,
         },
         documents: uploadedDocuments,
+        affidavits: {
+          acceptedCodes: acceptedAffidavitCodes,
+          points: activeAffidavitPoints,
+          bundle: savedAffidavitBundle || null,
+        },
+        conditionalCompliance: {
+          selections: conditionalSelections,
+          evidence: savedConditionalEvidence,
+        },
         updatedAt: serverTimestamp(),
       };
 
@@ -670,7 +1132,7 @@ export default function Page() {
               applicationId: savedApplicationId,
               ownerId: user.uid,
               documents: uploadedDocuments.map((item) => ({
-                key: item.key,
+                  key: item.key,
                 url: item.url,
               })),
             }),
@@ -731,6 +1193,11 @@ export default function Page() {
                       Scrutiny Remarks: {item.eds.remarks}
                     </p>
                   )}
+                  {item.status === "eds" && item.eds?.codes?.length ? (
+                    <p style={{ margin: "6px 0", color: "var(--muted)", fontSize: "0.85rem" }}>
+                      EDS Codes: {item.eds.codes.join(", ")}
+                    </p>
+                  ) : null}
                   <button className="button" type="button" onClick={() => startEditing(item)}>
                     {item.status === "eds" ? "Respond to EDS" : "Continue Draft"}
                   </button>
@@ -856,10 +1323,10 @@ export default function Page() {
           <div className="card" style={{ marginBottom: 16 }}>
             <h2 className="text-lg font-semibold" style={{ marginTop: 0 }}>Mandatory Technical Documents</h2>
             <p style={{ marginBottom: 12, color: "var(--muted)" }}>
-              Upload all mandatory documents in PDF format (max 20MB each).
+              Upload all mandatory documents for category {category} in PDF format (max 20MB each).
             </p>
 
-            {REQUIRED_DOCUMENTS.map((item) => (
+            {activeRequiredDocuments.map((item) => (
               <div className="field" key={item.key}>
                 <label>{item.label}</label>
                 <input
@@ -882,6 +1349,128 @@ export default function Page() {
                   <a href={existingDocuments[item.key]?.url || "#"} target="_blank" rel="noreferrer">
                     View existing file
                   </a>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h2 className="text-lg font-semibold" style={{ marginTop: 0 }}>Affidavit Declarations</h2>
+            <p style={{ marginBottom: 10, color: "var(--muted)" }}>
+              Accept all declarations and upload a notarized affidavit bundle PDF.
+            </p>
+
+            <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+              {activeAffidavitPoints.map((item) => (
+                <label key={item.code} className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={acceptedAffidavitCodes.includes(item.code)}
+                    onChange={(e) => {
+                      setAcceptedAffidavitCodes((prev) => {
+                        if (e.target.checked) {
+                          return [...prev, item.code];
+                        }
+                        return prev.filter((code) => code !== item.code);
+                      });
+                    }}
+                  />
+                  <span>
+                    <strong>{item.code}</strong>: {item.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="field">
+              <label>Notarized Affidavit Bundle (PDF)</label>
+              <input
+                className="input"
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => setAffidavitBundleFile(e.target.files?.[0] || null)}
+              />
+              <p style={{ margin: 0, color: affidavitBundleFile || existingAffidavitBundle ? "#2ea043" : "#f0b90b" }}>
+                {affidavitBundleFile
+                  ? `Selected: ${affidavitBundleFile.name}`
+                  : existingAffidavitBundle
+                  ? `Existing: ${existingAffidavitBundle.name}`
+                  : "Not uploaded"}
+              </p>
+              {existingAffidavitBundle?.url && (
+                <a href={existingAffidavitBundle.url} target="_blank" rel="noreferrer">
+                  View existing affidavit bundle
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h2 className="text-lg font-semibold" style={{ marginTop: 0 }}>Conditional Regulatory Evidence</h2>
+            <p style={{ marginBottom: 10, color: "var(--muted)" }}>
+              Mark each item as applicable where relevant. If selected, the corresponding evidence PDF is mandatory.
+            </p>
+
+            {conditionalRequirements.map((item) => (
+              <div key={item.key} className="card" style={{ marginTop: 10 }}>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!conditionalSelections[item.key]}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setConditionalSelections((prev) => ({
+                        ...prev,
+                        [item.key]: checked,
+                      }));
+
+                      if (!checked) {
+                        setConditionalEvidenceFiles((prev) => ({
+                          ...prev,
+                          [item.evidenceKey]: null,
+                        }));
+                      }
+                    }}
+                  />
+                  <span>{item.label}</span>
+                </label>
+
+                {conditionalSelections[item.key] && (
+                  <div className="field" style={{ marginTop: 10 }}>
+                    <label>{item.evidenceLabel}</label>
+                    <input
+                      className="input"
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setConditionalEvidenceFiles((prev) => ({
+                          ...prev,
+                          [item.evidenceKey]: file,
+                        }));
+                      }}
+                    />
+                    <p
+                      style={{
+                        margin: 0,
+                        color:
+                          conditionalEvidenceFiles[item.evidenceKey] || existingConditionalEvidence[item.evidenceKey]
+                            ? "#2ea043"
+                            : "#f0b90b",
+                      }}
+                    >
+                      {conditionalEvidenceFiles[item.evidenceKey]
+                        ? `Selected: ${conditionalEvidenceFiles[item.evidenceKey]?.name}`
+                        : existingConditionalEvidence[item.evidenceKey]
+                        ? `Existing: ${existingConditionalEvidence[item.evidenceKey]?.name}`
+                        : "Not uploaded"}
+                    </p>
+                    {existingConditionalEvidence[item.evidenceKey]?.url && (
+                      <a href={existingConditionalEvidence[item.evidenceKey]?.url || "#"} target="_blank" rel="noreferrer">
+                        View existing evidence
+                      </a>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -932,6 +1521,22 @@ export default function Page() {
           {editingApplicationStatus === "eds" && (
             <div className="card" style={{ marginBottom: 16 }}>
               <h2 className="text-lg font-semibold" style={{ marginTop: 0 }}>EDS Response</h2>
+              {selectedEditingApplication?.eds?.codes?.length ? (
+                <div className="field">
+                  <label>EDS Selected Codes</label>
+                  <p style={{ margin: 0, color: "#f0b90b" }}>
+                    {selectedEditingApplication.eds.codes.join(", ")}
+                  </p>
+                </div>
+              ) : null}
+              {selectedEditingApplication?.eds?.remarks ? (
+                <div className="field">
+                  <label>Scrutiny Remarks</label>
+                  <p style={{ margin: 0, color: "#f0b90b" }}>
+                    {selectedEditingApplication.eds.remarks}
+                  </p>
+                </div>
+              ) : null}
               <div className="field">
                 <label>Response Notes for Scrutiny Team</label>
                 <textarea
