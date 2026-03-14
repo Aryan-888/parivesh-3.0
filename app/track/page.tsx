@@ -5,6 +5,23 @@ import { auth, db } from "@/lib/firebase";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import ApplicationTimeline from "@/components/ApplicationTimeline";
+import RiskAnalysis from "@/components/RiskAnalysis";
+import DocumentAnalysis from "@/components/DocumentAnalysis";
+import AISummary from "@/components/AISummary";
+import DecisionInsights from "@/components/DecisionInsights";
+import DecisionSimulator from "@/components/DecisionSimulator";
+import ComplianceChecklist from "@/components/ComplianceChecklist";
+import GistGenerator from "@/components/GistGenerator";
+import {
+  analyzeDocumentCompleteness,
+  calculateEnvironmentalRisk,
+  computeComplianceChecklist,
+  generateApplicationSummary,
+  generateMeetingGist,
+  getDecisionInsights,
+  simulateCommitteeDecision,
+  type UploadedDocument,
+} from "@/lib/aiDecisionSupport";
 import ProtectedRoute from "../../components/ProtectedRoute";
 
 interface Application {
@@ -13,6 +30,7 @@ interface Application {
   location: string;
   description: string;
   status: string;
+  documents?: UploadedDocument[];
   createdAt?: unknown;
 }
 
@@ -68,6 +86,58 @@ export default function TrackApplication() {
     [myApplications]
   );
 
+  const riskAnalysis = useMemo(
+    () => (application ? calculateEnvironmentalRisk(application.status) : null),
+    [application]
+  );
+
+  const documentAnalysis = useMemo(
+    () => analyzeDocumentCompleteness(application?.documents || []),
+    [application]
+  );
+
+  const aiSummary = useMemo(
+    () =>
+      application
+        ? generateApplicationSummary(application.projectName, application.location, application.status)
+        : "",
+    [application]
+  );
+
+  const decisionInsights = useMemo(
+    () => getDecisionInsights(application?.status || ""),
+    [application]
+  );
+
+  const complianceChecklist = useMemo(
+    () => computeComplianceChecklist(application?.documents || []),
+    [application]
+  );
+
+  const committeeRiskScore = useMemo(
+    () => (riskAnalysis ? Math.max(0, 100 - riskAnalysis.score) : 100),
+    [riskAnalysis]
+  );
+
+  const decisionSimulation = useMemo(
+    () => simulateCommitteeDecision(committeeRiskScore, complianceChecklist.compliancePercentage),
+    [committeeRiskScore, complianceChecklist.compliancePercentage]
+  );
+
+  const meetingGist = useMemo(
+    () =>
+      application && riskAnalysis
+        ? generateMeetingGist({
+            projectName: application.projectName,
+            location: application.location,
+            riskLevel: riskAnalysis.level,
+            complianceScore: complianceChecklist.compliancePercentage,
+            recommendation: decisionInsights.recommendation,
+          })
+        : "",
+    [application, riskAnalysis, complianceChecklist.compliancePercentage, decisionInsights.recommendation]
+  );
+
   const fetchMyApplications = async () => {
     try {
       const user = auth.currentUser;
@@ -87,6 +157,7 @@ export default function TrackApplication() {
           location: data.location || "-",
           description: data.description || "-",
           status: data.status || "draft",
+          documents: (data.documents || []) as UploadedDocument[],
           createdAt: data.createdAt,
         };
       });
@@ -149,6 +220,7 @@ export default function TrackApplication() {
           location: data.location,
           description: data.description,
           status: data.status,
+          documents: (data.documents || []) as UploadedDocument[],
           createdAt: data.createdAt,
         });
       } else {
@@ -264,6 +336,30 @@ export default function TrackApplication() {
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Application Progress</h3>
                   <ApplicationTimeline currentStatus={application.status} />
                 </div>
+
+                {riskAnalysis && (
+                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <RiskAnalysis result={riskAnalysis} />
+                    <DocumentAnalysis items={documentAnalysis.items} />
+                    <AISummary summary={aiSummary} />
+                    <DecisionInsights
+                      recommendation={decisionInsights.recommendation}
+                      suggestedAction={decisionInsights.suggestedAction}
+                    />
+                    <DecisionSimulator
+                      riskScore={committeeRiskScore}
+                      complianceScore={complianceChecklist.compliancePercentage}
+                      result={decisionSimulation}
+                    />
+                    <ComplianceChecklist
+                      items={complianceChecklist.items}
+                      compliancePercentage={complianceChecklist.compliancePercentage}
+                    />
+                    <div className="lg:col-span-2">
+                      <GistGenerator gist={meetingGist} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
