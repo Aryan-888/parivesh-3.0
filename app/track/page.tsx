@@ -1,24 +1,120 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import ApplicationTimeline from "@/components/ApplicationTimeline";
 import ProtectedRoute from "../../components/ProtectedRoute";
 
 interface Application {
+  id: string;
   projectName: string;
   location: string;
   description: string;
   status: string;
-  createdAt: string;
+  createdAt?: unknown;
 }
 
 export default function TrackApplication() {
   const [applicationId, setApplicationId] = useState("");
   const [application, setApplication] = useState<Application | null>(null);
+  const [myApplications, setMyApplications] = useState<Application[]>([]);
+  const [loadingMyApplications, setLoadingMyApplications] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const formatCreatedAt = (value: unknown): string => {
+    if (!value) return "-";
+
+    if (typeof value === "object" && value !== null && "toDate" in (value as { toDate?: unknown })) {
+      const converter = (value as { toDate?: () => Date }).toDate;
+      if (typeof converter === "function") {
+        return converter().toLocaleDateString();
+      }
+    }
+
+    if (typeof value === "string") {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString();
+      }
+      return value;
+    }
+
+    return String(value);
+  };
+
+  const createdAtNumeric = (value: unknown): number => {
+    if (!value) return 0;
+
+    if (typeof value === "object" && value !== null && "toDate" in (value as { toDate?: unknown })) {
+      const converter = (value as { toDate?: () => Date }).toDate;
+      if (typeof converter === "function") {
+        return converter().getTime();
+      }
+    }
+
+    if (typeof value === "string") {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+    }
+
+    return 0;
+  };
+
+  const sortedMyApplications = useMemo(
+    () => [...myApplications].sort((a, b) => createdAtNumeric(b.createdAt) - createdAtNumeric(a.createdAt)),
+    [myApplications]
+  );
+
+  const fetchMyApplications = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        setMyApplications([]);
+        return;
+      }
+
+      const myQuery = query(collection(db, "applications"), where("ownerId", "==", user.uid));
+      const querySnapshot = await getDocs(myQuery);
+
+      const rows: Application[] = querySnapshot.docs.map((item) => {
+        const data = item.data();
+        return {
+          id: item.id,
+          projectName: data.projectName || "Untitled Project",
+          location: data.location || "-",
+          description: data.description || "-",
+          status: data.status || "draft",
+          createdAt: data.createdAt,
+        };
+      });
+
+      setMyApplications(rows);
+    } catch (err) {
+      console.error("Error fetching my applications:", err);
+      setError("Failed to load your applications.");
+    } finally {
+      setLoadingMyApplications(false);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setMyApplications([]);
+        setApplication(null);
+        setLoadingMyApplications(false);
+        return;
+      }
+
+      setLoadingMyApplications(true);
+      await fetchMyApplications();
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,11 +144,12 @@ export default function TrackApplication() {
         }
 
         setApplication({
+          id: applicationId.trim(),
           projectName: data.projectName,
           location: data.location,
           description: data.description,
           status: data.status,
-          createdAt: data.createdAt?.toDate?.()?.toLocaleDateString() || data.createdAt,
+          createdAt: data.createdAt,
         });
       } else {
         setError("Application not found");
@@ -68,13 +165,45 @@ export default function TrackApplication() {
   return (
     <ProtectedRoute allowedRole="proponent">
       <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto">
+        <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Track Your Application</h1>
-            <p className="mt-2 text-gray-600">Enter your Application ID to check the status</p>
+            <p className="mt-2 text-gray-600">Track all applications submitted from your account</p>
+          </div>
+
+          <div className="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">My Applications</h2>
+
+            {loadingMyApplications ? (
+              <p className="text-gray-600">Loading your applications...</p>
+            ) : sortedMyApplications.length === 0 ? (
+              <p className="text-gray-600">No applications found for your account yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {sortedMyApplications.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="w-full text-left p-4 border border-gray-200 rounded-md hover:border-blue-400"
+                    onClick={() => {
+                      setApplication(item);
+                      setApplicationId(item.id);
+                      setError("");
+                    }}
+                  >
+                    <p className="font-medium text-gray-900">{item.projectName}</p>
+                    <p className="text-sm text-gray-600">Application ID: {item.id}</p>
+                    <p className="text-sm text-gray-600">Location: {item.location}</p>
+                    <p className="text-sm text-gray-600 capitalize">Status: {item.status.replace("_", " ")}</p>
+                    <p className="text-sm text-gray-600">Created: {formatCreatedAt(item.createdAt)}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-white shadow-md rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Search by Application ID</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="applicationId" className="block text-sm font-medium text-gray-700">
@@ -127,7 +256,7 @@ export default function TrackApplication() {
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Created Date:</span>
-                    <p className="text-gray-900">{application.createdAt}</p>
+                    <p className="text-gray-900">{formatCreatedAt(application.createdAt)}</p>
                   </div>
                 </div>
 
