@@ -169,6 +169,16 @@ def create_app() -> Flask:
             pass
         return ""
 
+    @app.get("/")
+    def index() -> Any:
+        return jsonify(
+            {
+                "ok": True,
+                "service": "parivesh-backend-python",
+                "health": "/api/health",
+            }
+        )
+
     @app.get("/api/health")
     def health() -> Any:
         return jsonify({"ok": True, "service": "parivesh-backend-python"})
