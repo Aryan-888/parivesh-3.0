@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { fetchUserRole } from "@/lib/auth";
-import { getCategoryEnvironmentalRiskScore } from "@/lib/aiDecisionSupport";
 
 const roleRoutes: Record<string, string[]> = {
   admin: ["/admin"],
@@ -255,37 +254,6 @@ export default function Home() {
               ))}
             </div>
           )}
-        </article>
-
-        <article className="card" style={{ paddingTop: 20 }}>
-          <h2 style={{ marginTop: 0, marginBottom: 8 }}>Environmental Risk Score Reference</h2>
-          <p style={{ marginTop: 0, color: "var(--muted)", marginBottom: 14 }}>
-            Category-based base risk scores used by the portal.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-            {[
-              { category: "A", color: "#0b57d0" },
-              { category: "B1", color: "#1f7f4a" },
-              { category: "B2", color: "#b76b00" },
-            ].map((entry) => (
-              <div
-                key={entry.category}
-                className="card"
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  boxShadow: "var(--shadow-sm)",
-                  borderColor: "rgba(15, 31, 61, 0.1)",
-                }}
-              >
-                <p style={{ margin: 0, fontSize: ".83rem", color: "var(--muted)", letterSpacing: ".04em" }}>CATEGORY</p>
-                <p style={{ margin: "6px 0 4px", fontWeight: 700, fontSize: "1.1rem" }}>{entry.category}</p>
-                <p style={{ margin: 0, color: entry.color, fontWeight: 700, fontSize: "1.55rem" }}>
-                  {getCategoryEnvironmentalRiskScore(entry.category)}
-                </p>
-              </div>
-            ))}
-          </div>
         </article>
       </section>
     </main>

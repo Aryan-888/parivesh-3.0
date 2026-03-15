@@ -6,6 +6,7 @@ import { collection, getDocs, updateDoc, doc, query, where } from "firebase/fire
 import { onAuthStateChanged } from "firebase/auth";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import ApplicationTimeline from "../../components/ApplicationTimeline";
+import { getCategoryEnvironmentalRiskScore } from "@/lib/aiDecisionSupport";
 import {
   canTransition,
   isApplicationStatus,
@@ -639,6 +640,11 @@ export default function ScrutinyDashboard() {
               <h3 className="text-lg font-semibold mb-2">{app.projectName}</h3>
               <p className="text-sm text-gray-600 mb-1"><strong>Location:</strong> {app.location}</p>
               <p className="text-sm text-gray-600 mb-1"><strong>Category:</strong> {app.category || "A"}</p>
+              {getCategoryEnvironmentalRiskScore(app.category || "A") !== null && (
+                <p className="text-sm mb-1" style={{ color: "#1d4ed8", fontWeight: 600 }}>
+                  <strong>Environmental Risk Score:</strong> {getCategoryEnvironmentalRiskScore(app.category || "A")}
+                </p>
+              )}
               <p className="text-sm text-gray-600 mb-1"><strong>Applicant:</strong> {app.ownerEmail || "N/A"}</p>
               <p className="text-sm text-gray-600 mb-2"><strong>Description:</strong> {app.description}</p>
 
