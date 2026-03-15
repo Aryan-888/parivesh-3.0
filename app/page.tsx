@@ -83,19 +83,20 @@ export default function Home() {
           <p style={{ margin: 0 }}>A- A A+ | English</p>
         </div>
 
-        <div style={{ padding: "12px 18px", background: "#fff", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ padding: "8px 18px", background: "#fff", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <img
               src="/parivesh-logo.png"
               alt="PARIVESH Logo"
-              style={{ width: 190, maxWidth: "42vw", height: "auto", objectFit: "contain" }}
+              style={{ width: "auto", maxWidth: "42vw", maxHeight: 96, height: "auto", objectFit: "contain" }}
               onError={(event) => {
                 event.currentTarget.style.display = "none";
               }}
             />
+            <div style={{ width: 1, height: 48, background: "#d4dee8" }} />
             <div>
-              <p style={{ margin: 0, color: "#0f7c2f", fontWeight: 700, fontSize: ".9rem" }}>पर्यावरण, वन और जलवायु परिवर्तन मंत्रालय</p>
-              <p style={{ margin: 0, color: "#0f7c2f", fontWeight: 700, fontSize: "1.08rem" }}>
+              <p style={{ margin: 0, color: "#0f7c2f", fontWeight: 700, fontSize: ".88rem" }}>पर्यावरण, वन और जलवायु परिवर्तन मंत्रालय</p>
+              <p style={{ margin: 0, color: "#0f7c2f", fontWeight: 700, fontSize: "1.02rem" }}>
                 Ministry of Environment, Forest and Climate Change
               </p>
             </div>
@@ -126,15 +127,18 @@ export default function Home() {
 
       <section className="card" style={{ marginTop: 0, borderRadius: 0, padding: 0, overflow: "hidden" }}>
         <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 0 }}>
-          <div style={{ minHeight: 330, background: "linear-gradient(115deg, #27a2c7 2%, #73cf4e 98%)", position: "relative", padding: "26px 18px" }}>
-            <div style={{ position: "absolute", left: 12, bottom: 12, width: 130, height: 210, background: "linear-gradient(180deg, #f2f2f2, #d2d2d2)", borderRadius: 8, border: "1px solid rgba(0,0,0,.08)" }} />
-            <div style={{ marginLeft: 160 }}>
+          <div style={{ minHeight: 330, background: "linear-gradient(115deg, #27a2c7 2%, #73cf4e 98%)", position: "relative", padding: "30px 26px" }}>
+            <div style={{ marginLeft: 0 }}>
               <p style={{ margin: 0, fontSize: "clamp(2.2rem, 4vw, 3.2rem)", fontWeight: 800, color: "#145289", letterSpacing: ".02em" }}>
                 PARIVESH <span style={{ color: "#f2cb3c" }}>2.0</span>
               </p>
               <p style={{ marginTop: 10, color: "#1c2d41", maxWidth: 420, fontWeight: 700 }}>
                 PRO-ACTIVE AND RESPONSIVE FACILITATION BY INTERACTIVE VIRTUOUS ENVIRONMENTAL SINGLE WINDOW HUB
               </p>
+              <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Link className="button" href="/track">Track Proposal</Link>
+                <Link className="button button-secondary" href="/apply">Apply Now</Link>
+              </div>
             </div>
           </div>
 
