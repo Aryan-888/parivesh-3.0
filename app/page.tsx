@@ -67,51 +67,48 @@ export default function Home() {
 
   return (
     <main className="container">
-      <nav
+      <section
         className="card"
         style={{
           marginBottom: 16,
-          padding: "12px 14px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          background: "linear-gradient(120deg, rgba(15, 31, 61, 0.95), rgba(11, 87, 208, 0.92))",
-          color: "#fff",
+          padding: 0,
+          overflow: "hidden",
+          borderRadius: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            aria-hidden
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: "50%",
-              background: "#6fe3d2",
-              boxShadow: "0 0 0 5px rgba(111, 227, 210, 0.2)",
-            }}
-          />
-          <p style={{ margin: 0, fontWeight: 700, letterSpacing: "0.02em" }}>PARIVESH 3.0</p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 14,
+            padding: "14px 18px",
+            background: "linear-gradient(110deg, #1f5f93, #2d7cb8)",
+            color: "#fff",
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontSize: ".74rem", opacity: 0.9, letterSpacing: ".06em" }}>GOVERNMENT OF INDIA PORTAL</p>
+            <h1 style={{ margin: "2px 0 0", fontSize: "1.25rem", fontWeight: 800 }}>PARIVESH 3.0</h1>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Link className="button button-secondary" style={{ background: "#ffffff", color: "#163f60" }} href="/?mode=login">
+              Login
+            </Link>
+            <Link className="button button-secondary" style={{ background: "#ffffff", color: "#163f60" }} href="/?mode=signup">
+              Sign Up
+            </Link>
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/?mode=login">
-            Login
-          </Link>
-          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/?mode=signup">
-            Sign Up
-          </Link>
-          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/apply">
-            Apply
-          </Link>
-          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/track">
-            Track
-          </Link>
-          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/admin">
-            Admin
-          </Link>
+        <div style={{ height: 4, background: "linear-gradient(90deg, #f57c00, #2e7d32)" }} />
+
+        <div style={{ padding: "10px 16px", background: "#f8fcff", borderTop: "1px solid rgba(28,45,65,.1)" }}>
+          <p style={{ margin: 0, color: "#27415e", fontSize: ".9rem" }}>
+            <strong>Notice:</strong> Please ensure all mandatory documents and affidavit declarations are completed before submission.
+          </p>
         </div>
-      </nav>
+      </section>
 
       <section
         className="card"
@@ -119,7 +116,7 @@ export default function Home() {
           overflow: "hidden",
           position: "relative",
           background:
-            "linear-gradient(125deg, rgba(11, 87, 208, 0.14), rgba(0, 127, 109, 0.15) 52%, rgba(255, 255, 255, 0.96))",
+            "linear-gradient(125deg, rgba(31, 95, 147, 0.12), rgba(46, 125, 50, 0.1) 52%, rgba(255, 255, 255, 0.98))",
           borderRadius: 20,
           padding: "34px 26px",
         }}
@@ -156,7 +153,7 @@ export default function Home() {
           <h1
             style={{
               margin: 0,
-              fontSize: "clamp(2rem, 4vw, 3.2rem)",
+              fontSize: "clamp(1.9rem, 4vw, 3rem)",
               lineHeight: 1.03,
               letterSpacing: "-0.03em",
               textTransform: "uppercase",
@@ -170,7 +167,7 @@ export default function Home() {
               marginBottom: 20,
               maxWidth: 760,
               color: "var(--muted)",
-              fontSize: "1.02rem",
+              fontSize: ".98rem",
               lineHeight: 1.6,
             }}
           >
@@ -187,6 +184,9 @@ export default function Home() {
             </Link>
             <Link className="button button-secondary" href="/demo-checklist">
               Open Demo Checklist
+            </Link>
+            <Link className="button button-secondary" href="/scrutiny">
+              Scrutiny Desk
             </Link>
           </div>
         </div>
@@ -208,7 +208,7 @@ export default function Home() {
       <section className="grid" style={{ marginTop: 24, gap: 16 }}>
         <div className="grid grid-2" style={{ gap: 16 }}>
           <article className="card" style={{ boxShadow: "var(--shadow-sm)" }}>
-            <h2 style={{ marginTop: 0, marginBottom: 10 }}>Role-Aware Access</h2>
+            <h2 style={{ marginTop: 0, marginBottom: 10, color: "#1f5f93" }}>Role-Aware Access</h2>
             <p style={{ marginTop: 0, color: "var(--muted)", lineHeight: 1.6 }}>
               Modules appear based on your mapped role so every team sees only what they need.
             </p>
@@ -216,7 +216,7 @@ export default function Home() {
           </article>
 
           <article className="card" style={{ boxShadow: "var(--shadow-sm)" }}>
-            <h2 style={{ marginTop: 0, marginBottom: 10 }}>End-to-End Visibility</h2>
+            <h2 style={{ marginTop: 0, marginBottom: 10, color: "#1f5f93" }}>End-to-End Visibility</h2>
             <p style={{ marginTop: 0, color: "var(--muted)", lineHeight: 1.6 }}>
               Keep application state transparent from submission to scrutiny, referral, MoM, and finalization.
             </p>
