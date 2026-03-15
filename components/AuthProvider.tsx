@@ -55,13 +55,13 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   return (
     <>
       <nav className="bg-white shadow-sm border-b">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-xl font-bold">PARIVESH Portal</h1>
+        <div className="container mx-auto px-4 py-2 flex justify-between items-center">
+          <h1 className="text-lg font-bold">PARIVESH Portal</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{user.email}</span>
+            <span className="text-xs text-gray-600">{user.email}</span>
             <button
               onClick={handleLogout}
-              className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+              className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs"
             >
               Logout
             </button>
