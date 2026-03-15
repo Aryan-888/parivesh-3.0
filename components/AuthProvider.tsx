@@ -55,7 +55,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   return (
     <>
       <nav className="bg-white shadow-sm border-b">
-        <div className="container mx-auto px-4 py-2 flex justify-between items-center">
+        <div className="max-w-6xl mx-auto w-full px-4 py-2 flex justify-between items-center">
           <h1 className="text-lg font-bold">PARIVESH Portal</h1>
           <div className="flex items-center gap-4">
             <span className="text-xs text-gray-600">{user.email}</span>
