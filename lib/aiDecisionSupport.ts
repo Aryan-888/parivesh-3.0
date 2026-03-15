@@ -36,6 +36,20 @@ export interface ChecklistResult {
   compliancePercentage: number;
 }
 
+const CATEGORY_RISK_SCORES: Record<string, number> = {
+  a: 39,
+  b1: 43,
+  b2: 51,
+};
+
+export const getCategoryEnvironmentalRiskScore = (category: string): number | null => {
+  const normalized = String(category || "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return CATEGORY_RISK_SCORES[normalized] ?? null;
+};
+
 const REQUIRED_ENVIRONMENTAL_DOCUMENTS: Array<{ name: string; matchTerms: string[] }> = [
   {
     name: "Environmental Impact Report",

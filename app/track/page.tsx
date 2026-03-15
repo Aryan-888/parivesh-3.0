@@ -18,6 +18,7 @@ import {
   computeComplianceChecklist,
   generateApplicationSummary,
   generateMeetingGist,
+  getCategoryEnvironmentalRiskScore,
   getDecisionInsights,
   simulateCommitteeDecision,
   type UploadedDocument,
@@ -27,6 +28,7 @@ import ProtectedRoute from "../../components/ProtectedRoute";
 interface Application {
   id: string;
   projectName: string;
+  category?: string;
   location: string;
   description: string;
   status: string;
@@ -88,6 +90,11 @@ export default function TrackApplication() {
 
   const riskAnalysis = useMemo(
     () => (application ? calculateEnvironmentalRisk(application.status) : null),
+    [application]
+  );
+
+  const categoryRiskScore = useMemo(
+    () => getCategoryEnvironmentalRiskScore(application?.category || ""),
     [application]
   );
 
@@ -154,6 +161,7 @@ export default function TrackApplication() {
         return {
           id: item.id,
           projectName: data.projectName || "Untitled Project",
+          category: data.category || "",
           location: data.location || "-",
           description: data.description || "-",
           status: data.status || "draft",
@@ -217,6 +225,7 @@ export default function TrackApplication() {
         setApplication({
           id: applicationId.trim(),
           projectName: data.projectName,
+          category: data.category || "",
           location: data.location,
           description: data.description,
           status: data.status,
@@ -319,6 +328,10 @@ export default function TrackApplication() {
                     <p className="text-gray-900">{application.location}</p>
                   </div>
                   <div>
+                    <span className="font-medium text-gray-700">Category:</span>
+                    <p className="text-gray-900">{application.category || "-"}</p>
+                  </div>
+                  <div>
                     <span className="font-medium text-gray-700">Description:</span>
                     <p className="text-gray-900">{application.description}</p>
                   </div>
@@ -336,6 +349,16 @@ export default function TrackApplication() {
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Application Progress</h3>
                   <ApplicationTimeline currentStatus={application.status} />
                 </div>
+
+                {categoryRiskScore !== null && (
+                  <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                    <h3 className="text-lg font-medium text-blue-900">Category Environmental Risk Score</h3>
+                    <p className="mt-1 text-sm text-blue-800">
+                      Category <span className="font-semibold uppercase">{application.category}</span> maps to a risk score of{" "}
+                      <span className="font-bold">{categoryRiskScore}</span>.
+                    </p>
+                  </div>
+                )}
 
                 {riskAnalysis && (
                   <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
