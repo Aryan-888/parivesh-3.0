@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signUp } from "@/lib/firebase";
 import { ensurePermanentAdminAccount, fetchUserRole } from "@/lib/auth";
 
@@ -25,6 +25,16 @@ export default function Login({ onLogin }: LoginProps) {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const mode = (searchParams.get("mode") || "").trim().toLowerCase();
+    if (mode === "signup") {
+      setIsRegistering(true);
+    } else if (mode === "login") {
+      setIsRegistering(false);
+    }
+  }, [searchParams]);
 
   const routeForRole = (role: string | null) => {
     if (!role) return "/";

@@ -96,6 +96,12 @@ export default function Home() {
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/?mode=login">
+            Login
+          </Link>
+          <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/?mode=signup">
+            Sign Up
+          </Link>
           <Link className="button button-secondary" style={{ background: "#ffffff", color: "#0f1f3d" }} href="/apply">
             Apply
           </Link>
