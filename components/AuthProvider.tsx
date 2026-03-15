@@ -17,6 +17,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   const pathname = usePathname();
 
   const isAdminAuthPath = pathname === "/admin" || pathname === "/admin-login";
+  const isPublicHomePath = pathname === "/";
   const hideGlobalNav = pathname === "/";
 
   useEffect(() => {
@@ -46,6 +47,10 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   }
 
   if (!user) {
+    if (isPublicHomePath) {
+      return <>{children}</>;
+    }
+
     if (isAdminAuthPath) {
       return <AdminLogin onLogin={() => setUser(auth.currentUser)} />;
     }

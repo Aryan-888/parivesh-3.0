@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signIn, signUp } from "@/lib/firebase";
 import { ensurePermanentAdminAccount, fetchUserRole } from "@/lib/auth";
 
@@ -26,15 +26,21 @@ export default function Login({ onLogin }: LoginProps) {
 
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   useEffect(() => {
+    if (pathname === "/signup") {
+      setIsRegistering(true);
+      return;
+    }
+
     const mode = (searchParams.get("mode") || "").trim().toLowerCase();
     if (mode === "signup") {
       setIsRegistering(true);
     } else if (mode === "login") {
       setIsRegistering(false);
     }
-  }, [searchParams]);
+  }, [pathname, searchParams]);
 
   const routeForRole = (role: string | null) => {
     if (!role) return "/";

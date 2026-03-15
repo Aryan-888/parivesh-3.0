@@ -103,8 +103,8 @@ export default function Home() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Link className="button button-secondary" href="/?mode=login">Login</Link>
-            <Link className="button" href="/?mode=signup">Registration</Link>
+            <Link className="button button-secondary" href="/login">Login</Link>
+            <Link className="button" href="/signup">Registration</Link>
           </div>
         </div>
 
