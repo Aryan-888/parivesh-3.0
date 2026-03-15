@@ -130,7 +130,7 @@ export default function Home() {
           <div style={{ minHeight: 330, background: "linear-gradient(115deg, #27a2c7 2%, #73cf4e 98%)", position: "relative", padding: "30px 26px" }}>
             <div style={{ marginLeft: 0 }}>
               <p style={{ margin: 0, fontSize: "clamp(2.2rem, 4vw, 3.2rem)", fontWeight: 800, color: "#145289", letterSpacing: ".02em" }}>
-                PARIVESH <span style={{ color: "#f2cb3c" }}>2.0</span>
+                PARIVESH <span style={{ color: "#f2cb3c" }}>3.0</span>
               </p>
               <p style={{ marginTop: 10, color: "#1c2d41", maxWidth: 420, fontWeight: 700 }}>
                 PRO-ACTIVE AND RESPONSIVE FACILITATION BY INTERACTIVE VIRTUOUS ENVIRONMENTAL SINGLE WINDOW HUB
@@ -143,7 +143,29 @@ export default function Home() {
           </div>
 
           <div style={{ minHeight: 330, background: "linear-gradient(120deg, #3a9ebe, #6ecb69)", display: "grid", placeItems: "center", padding: 18 }}>
-            <div style={{ width: "85%", maxWidth: 450, aspectRatio: "1 / 1", borderRadius: "50%", background: "conic-gradient(#4ca0dc, #58d68d, #f4d03f, #e67e22, #af7ac5, #4ca0dc)", boxShadow: "inset 0 0 0 28px #fff" }} />
+            <div
+              style={{
+                width: "85%",
+                maxWidth: 450,
+                aspectRatio: "1 / 1",
+                borderRadius: "50%",
+                background: "#ffffff",
+                border: "16px solid rgba(255, 255, 255, 0.94)",
+                boxShadow: "0 8px 22px rgba(25, 65, 97, 0.2)",
+                display: "grid",
+                placeItems: "center",
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src="/parivesh-logo.png"
+                alt="PARIVESH Logo"
+                style={{ width: "74%", height: "74%", objectFit: "contain" }}
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+            </div>
           </div>
         </div>
 
