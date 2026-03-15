@@ -623,8 +623,8 @@ export default function ScrutinyDashboard() {
 
   return (
     <ProtectedRoute allowedRole="scrutiny">
-      <main className="container">
-        <header className="header">
+      <main className="container gov-module">
+        <header className="header gov-header">
           <div>
             <h1 className="title">Scrutiny Dashboard</h1>
             <p className="subtitle">Verify documents, maintain checklist, issue EDS, and refer eligible cases.</p>

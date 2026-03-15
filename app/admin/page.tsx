@@ -837,8 +837,8 @@ export default function AdminDashboard() {
 
   return (
     <ProtectedRoute allowedRole="admin">
-      <main className="container">
-        <header className="header">
+      <main className="container gov-module">
+        <header className="header gov-header">
           <div>
             <h1 className="title">Admin Dashboard</h1>
             <p className="subtitle">Manage users, templates, sectors, and application oversight.</p>

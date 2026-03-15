@@ -1112,8 +1112,8 @@ export default function Page() {
 
   return (
     <ProtectedRoute allowedRole="proponent">
-      <main className="container">
-        <header className="header">
+      <main className="container gov-module">
+        <header className="header gov-header">
           <div>
             <h1 className="title">Apply for PARIVESH</h1>
             <p className="subtitle">

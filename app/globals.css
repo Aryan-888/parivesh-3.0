@@ -308,3 +308,49 @@ a:hover {
     width: 100%;
   }
 }
+
+.gov-module {
+  position: relative;
+}
+
+.gov-module::before {
+  content: "";
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+  background: linear-gradient(90deg, #f57c00, #ffffff, #2e7d32);
+  opacity: 0.92;
+}
+
+.gov-header {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(125deg, rgba(31, 95, 147, 0.16), rgba(46, 125, 50, 0.11) 58%, rgba(255, 255, 255, 0.95));
+  border-radius: 16px;
+}
+
+.gov-header::after {
+  content: "";
+  position: absolute;
+  right: -60px;
+  top: -70px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(31, 95, 147, 0.27), rgba(31, 95, 147, 0.03));
+}
+
+.gov-header .title {
+  position: relative;
+  z-index: 1;
+  color: #1b4f79;
+  -webkit-text-fill-color: #1b4f79;
+  background: none;
+}
+
+.gov-header .subtitle {
+  position: relative;
+  z-index: 1;
+  color: #355573;
+}
