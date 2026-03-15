@@ -85,14 +85,19 @@ export default function Home() {
 
         <div style={{ padding: "12px 18px", background: "#fff", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "conic-gradient(#f57c00, #fff, #2e7d32)", border: "2px solid #d5dfe8" }} />
+            <img
+              src="/parivesh-logo.png"
+              alt="PARIVESH Logo"
+              style={{ width: 190, maxWidth: "42vw", height: "auto", objectFit: "contain" }}
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
             <div>
-              <h1 style={{ margin: 0, fontSize: "1.95rem", letterSpacing: ".02em", color: "#163f60" }}>PARIVESH</h1>
-              <p style={{ margin: 0, color: "#2e7d32", fontWeight: 700, fontSize: ".9rem" }}>(CPC GREEN)</p>
-            </div>
-            <div style={{ width: 1, height: 50, background: "#d4dee8" }} />
-            <div>
-              <p style={{ margin: 0, color: "#215375", fontWeight: 700, fontSize: ".95rem" }}>Ministry of Environment, Forest and Climate Change</p>
+              <p style={{ margin: 0, color: "#0f7c2f", fontWeight: 700, fontSize: ".9rem" }}>पर्यावरण, वन और जलवायु परिवर्तन मंत्रालय</p>
+              <p style={{ margin: 0, color: "#0f7c2f", fontWeight: 700, fontSize: "1.08rem" }}>
+                Ministry of Environment, Forest and Climate Change
+              </p>
             </div>
           </div>
 
